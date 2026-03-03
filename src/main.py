@@ -45,6 +45,14 @@ def main():
         key=lambda e: (e["date"], e["time"]),
     )
 
+    try:
+        from recommender import score_events
+        all_events = score_events(all_events)
+        all_events = [e for e in all_events if e.get("score", 0.5) >= 0.3]
+        all_events = sorted(all_events, key=lambda e: (e["date"], -e.get("score", 0.5), e["time"]))
+    except Exception:
+        pass  # degrade gracefully — original sort preserved
+
     render(all_events, weather)
 
 

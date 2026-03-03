@@ -1,13 +1,13 @@
 """
-Phase 4 — Web dashboard. Run with:
-  python src/web.py
+Phase 4 — Web dashboard. Run with:  python src/web.py
 """
 import sys
 import os
+import json as _json
 import html as htmllib
 import threading
 import webbrowser
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -19,6 +19,10 @@ from events import event_emoji
 
 PORT = 8080
 
+DATA_DIR     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+SAMPLE_FILE  = os.path.join(DATA_DIR, "sample_events.json")
+RATINGS_FILE = os.path.join(DATA_DIR, "ratings.json")
+
 TYPE_COLORS = {
     "sports": "#5b9cf6",
     "music":  "#c084fc",
@@ -27,40 +31,55 @@ TYPE_COLORS = {
     "other":  "#94a3b8",
 }
 
+# ── Data helpers ───────────────────────────────────────────────────────────────
+
+def _load_ratings():
+    if not os.path.exists(RATINGS_FILE):
+        return []
+    with open(RATINGS_FILE) as f:
+        return _json.load(f)
+
+
+def _save_rating(event: dict, rating: int):
+    """Upsert: update existing entry by name, or append."""
+    ratings = _load_ratings()
+    entry = {
+        "event":    event,
+        "rating":   rating,
+        "rated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    for i, r in enumerate(ratings):
+        if r["event"]["name"] == event["name"]:
+            ratings[i] = entry
+            break
+    else:
+        ratings.append(entry)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(RATINGS_FILE, "w") as f:
+        _json.dump(ratings, f, indent=2)
+
+
 # ── CSS ────────────────────────────────────────────────────────────────────────
-# Kept as a plain string so CSS braces don't need escaping in the f-string below.
 CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow+Condensed:wght@600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #09090d;
-  --s1:       #111118;
-  --s2:       #16161f;
-  --b1:       #1c1c28;
-  --b2:       #252535;
-  --text:     #eaecf0;
-  --dim:      #606278;
-  --amber:    #e8a73a;
-  --r:        10px;
-}
-
-/* Subtle film grain */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 999;
-  opacity: 0.032;
-  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/></filter><rect width='300' height='300' filter='url(%23n)'/></svg>");
-  background-size: 180px;
+  --bg:      #f6f5f1;
+  --surface: #ffffff;
+  --border:  #e8e5df;
+  --text:    #1c1a18;
+  --dim:     #786f64;
+  --accent:  #1d4ed8;
+  --r:       8px;
+  --yes: #16a34a;
+  --mid: #d97706;
+  --no:  #dc2626;
 }
 
 body {
   background: var(--bg);
-  background-image: radial-gradient(ellipse 90% 45% at 50% 0%, rgba(22, 28, 55, 0.7) 0%, transparent 65%);
   color: var(--text);
   font-family: 'DM Sans', -apple-system, sans-serif;
   font-size: 15px;
@@ -73,73 +92,87 @@ body {
 
 /* ── Header ── */
 header {
-  padding: 2.75rem 1.5rem 2rem;
+  padding: 2rem 1.5rem 1.25rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .site-title {
-  font-family: 'Instrument Serif', Georgia, serif;
-  font-style: italic;
-  font-weight: 400;
-  font-size: clamp(2.6rem, 8vw, 4rem);
-  letter-spacing: -0.025em;
-  line-height: 1;
+  font-size: 26px;
+  font-weight: 600;
   color: var(--text);
-  display: block;
-  margin-bottom: 0.75rem;
-  animation: fadeIn 0.6s ease both;
+  letter-spacing: -0.02em;
 }
 
-.header-sub {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-  animation: fadeIn 0.6s 0.1s ease both;
-}
-
-.header-chip {
-  font-size: 0.75rem;
+.header-meta {
+  font-size: 0.8rem;
   color: var(--dim);
-  background: var(--s1);
-  border: 1px solid var(--b2);
-  border-radius: 100px;
-  padding: 0.22rem 0.7rem;
-  white-space: nowrap;
 }
 
-.header-sep { color: var(--b2); font-size: 0.7rem; }
+/* ── Tab bar ── */
+.tab-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem;
+  display: flex;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.7rem 1rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dim);
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
 
 /* ── Section ── */
 .section {
   padding: 0 1.5rem;
-  margin-bottom: 2.75rem;
+  margin-bottom: 2.5rem;
+  margin-top: 2rem;
 }
 
 .section-rule {
   display: flex;
   align-items: center;
   gap: 0.9rem;
-  margin-bottom: 1.1rem;
+  margin-bottom: 1rem;
 }
 
 .section-label {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-.section-label.today { color: var(--amber); }
+.section-label.today { color: var(--accent); }
 
 .section-rule::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: linear-gradient(to right, var(--b2), transparent);
+  background: var(--border);
 }
 
 /* ── Weather chips ── */
@@ -147,17 +180,17 @@ header {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin-bottom: 1.1rem;
+  margin-bottom: 1rem;
 }
 
 .wx-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: var(--s1);
-  border: 1px solid var(--b2);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 100px;
-  padding: 0.28rem 0.8rem;
+  padding: 0.25rem 0.75rem;
   font-size: 0.76rem;
   color: var(--dim);
   white-space: nowrap;
@@ -169,7 +202,7 @@ header {
 .events {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.55rem;
+  gap: 0.5rem;
 }
 
 @media (min-width: 520px) {
@@ -180,52 +213,59 @@ header {
   .events { grid-template-columns: 1fr 1fr 1fr; }
 }
 
+/* ── Swipe row wrapper ── */
+.swipe-row {
+  position: relative;
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
 /* ── Card ── */
 .card {
   position: relative;
-  background: var(--s1);
-  border: 1px solid var(--b1);
-  border-radius: var(--r);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
   padding: 1rem 1.1rem;
   text-decoration: none;
   display: block;
   overflow: hidden;
+  touch-action: pan-y;
 
   opacity: 0;
-  animation: slideUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: calc(var(--i, 0) * 55ms);
-
-  transition: transform 0.2s ease, box-shadow 0.2s ease,
-              background 0.2s ease, border-color 0.2s ease;
+  animation: fadeIn 0.3s ease forwards;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: box-shadow 0.18s ease;
 }
 
-/* Left accent bar drawn via pseudo-element */
+/* Left accent bar */
 .card::before {
   content: '';
   position: absolute;
-  left: 0; top: 12%; bottom: 12%;
-  width: 2px;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
   background: var(--tc, transparent);
-  border-radius: 0 2px 2px 0;
-  opacity: 0.85;
-  transition: top 0.2s ease, bottom 0.2s ease, opacity 0.2s ease;
 }
 
-.card:hover {
-  transform: translateY(-3px);
-  background: var(--s2);
-  border-color: var(--b2);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+/* Rating dot */
+.card::after {
+  content: '';
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  display: none;
 }
 
-.card:hover::before {
-  top: 8%; bottom: 8%;
-  opacity: 1;
-}
+.swipe-row[data-rated]   .card::after { display: block; }
+.swipe-row[data-rated="1"]  .card::after { background: var(--yes); }
+.swipe-row[data-rated="0"]  .card::after { background: var(--mid); }
+.swipe-row[data-rated="-1"] .card::after { background: var(--no); }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+@media (hover: hover) {
+  .swipe-row:hover .card {
+    box-shadow: 0 4px 14px rgba(0,0,0,0.09);
+  }
 }
 
 @keyframes fadeIn {
@@ -234,10 +274,7 @@ header {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card, .site-title, .header-sub {
-    animation: none; opacity: 1;
-  }
-  .card:hover { transform: none; }
+  .card { animation: none; opacity: 1; }
 }
 
 .card-top {
@@ -255,7 +292,7 @@ header {
 .card-body { min-width: 0; }
 
 .card-name {
-  font-size: 0.9rem;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text);
   line-height: 1.35;
@@ -278,15 +315,15 @@ header {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  margin-top: 0.8rem;
+  margin-top: 0.75rem;
   flex-wrap: wrap;
 }
 
 .tag {
   font-size: 0.69rem;
   color: var(--dim);
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.07);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0.15rem 0.5rem;
   white-space: nowrap;
@@ -304,6 +341,257 @@ header {
   font-style: italic;
   padding: 0.2rem 0;
 }
+
+/* ── Rate strip ── */
+.rate-strip {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+}
+
+@media (hover: hover) {
+  .swipe-row:hover .rate-strip {
+    transform: translateX(0);
+  }
+}
+
+.swipe-row.open .rate-strip {
+  transform: translateX(0);
+}
+
+.r-btn {
+  flex: 1;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  transition: filter 0.12s;
+}
+
+.r-btn:hover  { filter: brightness(1.12); }
+.r-btn:active { filter: brightness(0.92); }
+
+.r-yes { background: var(--yes); }
+.r-mid { background: var(--mid); }
+.r-no  { background: var(--no); }
+
+/* ── Train tab ── */
+.train-header {
+  padding: 1.5rem 1.5rem 0.75rem;
+}
+
+.train-stats {
+  font-size: 0.8rem;
+  color: var(--dim);
+  margin-bottom: 0.75rem;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 0.28rem 0.85rem;
+  font-size: 0.78rem;
+  font-family: inherit;
+  color: var(--dim);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.train-list {
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+"""
+
+# ── Static JS (no Python f-string interpolation needed) ───────────────────────
+JS = r"""
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const target = btn.dataset.tab;
+    document.getElementById('tab-week').hidden  = target !== 'week';
+    document.getElementById('tab-train').hidden = target !== 'train';
+  });
+});
+
+// ── Mobile swipe ──────────────────────────────────────────────────────────────
+function attachSwipe(row) {
+  let startX = 0, startY = 0, tracking = false;
+
+  row.addEventListener('pointerdown', e => {
+    startX = e.clientX;
+    startY = e.clientY;
+    tracking = true;
+  });
+
+  row.addEventListener('pointermove', e => {
+    if (!tracking) return;
+    const dx = startX - e.clientX;
+    const dy = Math.abs(e.clientY - startY);
+    if (dx > 50 && dy < 40)  row.classList.add('open');
+    if (dx < -20)             row.classList.remove('open');
+  });
+
+  row.addEventListener('pointerup',     () => { tracking = false; });
+  row.addEventListener('pointercancel', () => { tracking = false; });
+}
+
+// ── Rating fetch ──────────────────────────────────────────────────────────────
+function attachRating(row, onSuccess) {
+  row.querySelectorAll('.r-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const val   = btn.dataset.val;
+      const event = JSON.parse(row.dataset.event);
+      try {
+        await fetch('/rate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event, rating: parseInt(val, 10) }),
+        });
+        row.dataset.rated = val;
+        CURRENT_RATINGS[event.name] = parseInt(val, 10);
+        row.classList.remove('open');
+        if (onSuccess) onSuccess();
+      } catch (err) {
+        console.error('Rating failed', err);
+      }
+    });
+  });
+}
+
+// ── Wire up week-tab cards ─────────────────────────────────────────────────────
+document.querySelectorAll('#tab-week .swipe-row').forEach(row => {
+  attachSwipe(row);
+  attachRating(row);
+});
+
+// ── Training tab ──────────────────────────────────────────────────────────────
+let activeFilter = 'all';
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function encodeAttrJson(ev) {
+  return JSON.stringify(ev)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function typeEmoji(t) {
+  return ({sports:'🏟️', music:'🎵', comedy:'🎤', food:'🍽️', other:'🎟️'})[t] || '📅';
+}
+
+function updateStats() {
+  const stats = document.getElementById('train-stats');
+  if (!stats) return;
+  const rated   = Object.keys(CURRENT_RATINGS).length;
+  const unrated = TRAINING_EVENTS.filter(e => CURRENT_RATINGS[e.name] === undefined).length;
+  stats.textContent = rated + ' rated · ' + unrated + ' unrated';
+}
+
+function renderTrainList() {
+  const list = document.getElementById('train-list');
+  if (!list) return;
+
+  const evs = activeFilter === 'all'
+    ? TRAINING_EVENTS
+    : TRAINING_EVENTS.filter(e => e.type === activeFilter);
+
+  list.innerHTML = evs.map(ev => {
+    const color    = TYPE_COLORS[ev.type] || '#94a3b8';
+    const rated    = CURRENT_RATINGS[ev.name];
+    const rAttr    = rated !== undefined ? ' data-rated="' + rated + '"' : '';
+    const evJson   = encodeAttrJson(ev);
+    const d        = new Date(ev.date + 'T12:00:00');
+    const dayStr   = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+    return (
+      '<div class="swipe-row"' + rAttr + ' data-event="' + evJson + '">' +
+        '<a class="card" href="' + escHtml(ev.url) + '" target="_blank" rel="noopener"' +
+           ' style="--tc:' + color + '">' +
+          '<div class="card-top">' +
+            '<span class="card-emoji">' + typeEmoji(ev.type) + '</span>' +
+            '<div class="card-body">' +
+              '<div class="card-name">'  + escHtml(ev.name)  + '</div>' +
+              '<div class="card-venue">@ ' + escHtml(ev.venue) + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="card-meta">' +
+            '<span class="tag">' + escHtml(dayStr)            + '</span>' +
+            '<span class="tag">' + escHtml(ev.neighborhood)   + '</span>' +
+            '<span class="tag">' + escHtml(ev.price_range)    + '</span>' +
+          '</div>' +
+        '</a>' +
+        '<div class="rate-strip">' +
+          '<button class="r-btn r-yes" data-val="1">✓</button>' +
+          '<button class="r-btn r-mid" data-val="0">–</button>' +
+          '<button class="r-btn r-no"  data-val="-1">✗</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
+
+  list.querySelectorAll('.swipe-row').forEach(row => {
+    attachSwipe(row);
+    attachRating(row, updateStats);
+  });
+
+  updateStats();
+}
+
+// Build filter chips
+(function () {
+  const chips   = document.getElementById('filter-chips');
+  if (!chips) return;
+  const filters = ['all', 'sports', 'music', 'comedy', 'food', 'other'];
+  const labels  = ['All', 'Sports', 'Music', 'Comedy', 'Food', 'Other'];
+  filters.forEach((f, i) => {
+    const btn = document.createElement('button');
+    btn.className   = 'chip' + (f === 'all' ? ' active' : '');
+    btn.textContent = labels[i];
+    btn.addEventListener('click', () => {
+      activeFilter = f;
+      chips.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      renderTrainList();
+    });
+    chips.appendChild(btn);
+  });
+})();
+
+renderTrainList();
 """
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -337,14 +625,22 @@ def _wx_chip(label, day):
     )
 
 
-def _card(event, weather, show_day, idx):
+def _card(event, weather, show_day, idx, ratings_map=None):
     day = weather.get(event["date"])
     flag = weather_flags(day, event["indoor_outdoor"]) if day else ""
     color = TYPE_COLORS.get(event["type"], "#6b7280")
     d = date.fromisoformat(event["date"])
     day_part = f"{d.strftime('%a')} {_fmt_time(event['time'])}" if show_day else _fmt_time(event["time"])
 
-    return (
+    # Serialize event for data-event attribute (HTML-escaped JSON)
+    event_json = htmllib.escape(_json.dumps(event))
+
+    # Apply existing rating if present
+    rated_attr = ""
+    if ratings_map and event["name"] in ratings_map:
+        rated_attr = f' data-rated="{ratings_map[event["name"]]}"'
+
+    card_html = (
         f'<a class="card" href="{_e(event["url"])}" target="_blank" rel="noopener"'
         f' style="--tc:{color};--i:{idx}">'
         f'<div class="card-top">'
@@ -359,6 +655,20 @@ def _card(event, weather, show_day, idx):
         f'<span class="tag">{_e(event["price_range"])}</span>'
         f'<span class="flag">{flag}</span>'
         f'</div></a>'
+    )
+
+    rate_strip = (
+        '<div class="rate-strip">'
+        '<button class="r-btn r-yes" data-val="1">✓</button>'
+        '<button class="r-btn r-mid" data-val="0">–</button>'
+        '<button class="r-btn r-no"  data-val="-1">✗</button>'
+        '</div>'
+    )
+
+    return (
+        f'<div class="swipe-row"{rated_attr} data-event="{event_json}">'
+        f'{card_html}{rate_strip}'
+        f'</div>'
     )
 
 
@@ -378,11 +688,11 @@ def _section(label, label_class, wx_html, cards, empty_msg):
 # ── Page builder ──────────────────────────────────────────────────────────────
 
 def build_page():
-    today = date.today()
+    today  = date.today()
     monday = today - timedelta(days=today.weekday())
     friday = monday + timedelta(days=4)
     saturday = monday + timedelta(days=5)
-    sunday = monday + timedelta(days=6)
+    sunday   = monday + timedelta(days=6)
 
     try:
         weather = fetch_weather()
@@ -401,9 +711,30 @@ def build_page():
 
     all_events = sorted(sports + culture, key=lambda e: (e["date"], e["time"]))
 
-    today_str = today.isoformat()
+    try:
+        from recommender import score_events
+        all_events = score_events(all_events)
+        all_events = [e for e in all_events if e.get("score", 0.5) >= 0.3]
+        all_events = sorted(all_events, key=lambda e: (e["date"], -e.get("score", 0.5), e["time"]))
+    except Exception:
+        pass
+
+    # Load ratings for dot indicators and training tab
+    ratings     = _load_ratings()
+    ratings_map = {r["event"]["name"]: r["rating"] for r in ratings}
+
+    # Build training event pool (sample + live, deduplicated by name)
+    sample_events = []
+    if os.path.exists(SAMPLE_FILE):
+        with open(SAMPLE_FILE) as f:
+            sample_events = _json.load(f)
+    training_pool = {e["name"]: e for e in sample_events}
+    training_pool.update({e["name"]: e for e in sports + culture})
+    training_events = list(training_pool.values())
+
+    today_str    = today.isoformat()
     weekend_dates = {friday.isoformat(), saturday.isoformat(), sunday.isoformat()}
-    later_dates = set()
+    later_dates   = set()
     d = today + timedelta(days=1)
     while d < friday:
         later_dates.add(d.isoformat())
@@ -415,26 +746,33 @@ def build_page():
 
     # Header
     highs = [w["high"] for w in weather.values() if w]
-    temp_range = f"{min(highs)}–{max(highs)}°F" if highs else ""
+    temp_str  = f"{min(highs)}–{max(highs)}°F" if highs else ""
     week_label = (
         f"{monday.strftime('%a')} {monday.strftime('%b')} {monday.day}"
         " – "
         f"{sunday.strftime('%a')} {sunday.strftime('%b')} {sunday.day}"
     )
-
-    chips = f'<span class="header-chip">{_e(week_label)}</span>'
-    if temp_range:
-        chips += f'<span class="header-sep">·</span><span class="header-chip">🌡️ {_e(temp_range)}</span>'
+    meta_parts = [week_label]
+    if temp_str:
+        meta_parts.append(f"🌡️ {temp_str}")
 
     header_html = (
         f'<header>'
         f'<span class="site-title">Chi This Week</span>'
-        f'<div class="header-sub">{chips}</div>'
+        f'<span class="header-meta">{_e("  ·  ".join(meta_parts))}</span>'
         f'</header>'
     )
 
-    # TODAY
-    today_wx = weather.get(today_str)
+    # Tab bar
+    tab_bar = (
+        '<nav class="tab-bar">'
+        '<button class="tab-btn active" data-tab="week">This Week</button>'
+        '<button class="tab-btn" data-tab="train">Train</button>'
+        '</nav>'
+    )
+
+    # TODAY section
+    today_wx     = weather.get(today_str)
     today_wx_html = ""
     if today_wx:
         today_wx_html = f'<div class="wx-row">{_wx_chip(today.strftime("%A"), today_wx)}</div>'
@@ -442,11 +780,11 @@ def build_page():
         f"Today · {today.strftime('%A')}",
         "today",
         today_wx_html,
-        [_card(e, weather, False, i) for i, e in enumerate(today_evts)],
+        [_card(e, weather, False, i, ratings_map) for i, e in enumerate(today_evts)],
         "Nothing on the radar today.",
     )
 
-    # THIS WEEKEND
+    # THIS WEEKEND section
     wx_pills = "".join(
         _wx_chip(lbl, weather.get(d.isoformat()))
         for d, lbl in [(friday, "Fri"), (saturday, "Sat"), (sunday, "Sun")]
@@ -455,18 +793,37 @@ def build_page():
         "This Weekend",
         "",
         f'<div class="wx-row">{wx_pills}</div>' if wx_pills else "",
-        [_card(e, weather, True, i) for i, e in enumerate(weekend_evts)],
+        [_card(e, weather, True, i, ratings_map) for i, e in enumerate(weekend_evts)],
         "Nothing lined up yet.",
     )
 
-    # LATER THIS WEEK
+    # LATER THIS WEEK section
     later_sec = _section(
         "Later This Week",
         "",
         "",
-        [_card(e, weather, True, i) for i, e in enumerate(later_evts)],
+        [_card(e, weather, True, i, ratings_map) for i, e in enumerate(later_evts)],
         "Quiet stretch — save your money 💤",
     )
+
+    # Training tab (JS renders the list)
+    train_tab = (
+        '<div id="tab-train" hidden>'
+        '<div class="train-header">'
+        '<div id="train-stats" class="train-stats"></div>'
+        '<div id="filter-chips" class="filter-chips"></div>'
+        '</div>'
+        '<div id="train-list" class="train-list"></div>'
+        '</div>'
+    )
+
+    # Embed JSON data then static JS
+    data_js = "\n".join([
+        "const TRAINING_EVENTS = " + _json.dumps(training_events) + ";",
+        "const CURRENT_RATINGS = " + _json.dumps(ratings_map) + ";",
+        "const TYPE_COLORS = "     + _json.dumps(TYPE_COLORS) + ";",
+    ])
+    script_html = f"<script>\n{data_js}\n{JS}\n</script>"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -478,9 +835,14 @@ def build_page():
 </head>
 <body>
   {header_html}
-  {today_sec}
-  {weekend_sec}
-  {later_sec}
+  {tab_bar}
+  <div id="tab-week">
+    {today_sec}
+    {weekend_sec}
+    {later_sec}
+  </div>
+  {train_tab}
+  {script_html}
 </body>
 </html>"""
 
@@ -495,6 +857,32 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self):
+        if self.path != "/rate":
+            self.send_response(404)
+            self.end_headers()
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        body   = self.rfile.read(length).decode()
+        try:
+            data   = _json.loads(body)
+            event  = data["event"]
+            rating = int(data["rating"])
+            _save_rating(event, rating)
+            resp = _json.dumps({"ok": True}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+        except Exception as ex:
+            resp = _json.dumps({"ok": False, "error": str(ex)}).encode()
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
 
     def log_message(self, fmt, *args):
         pass
