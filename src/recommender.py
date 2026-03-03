@@ -9,6 +9,7 @@ from datetime import datetime
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 RATINGS_FILE = os.path.join(DATA_DIR, "ratings.json")
+DB_FILE      = os.path.join(DATA_DIR, "ratings.db")
 MIN_RATINGS = 10
 
 # ── Keyword / venue sets ───────────────────────────────────────────────────────
@@ -169,10 +170,19 @@ def rule_score(event: dict) -> float:
 # ── Model training ────────────────────────────────────────────────────────────
 
 def _load_ratings() -> list:
-    if not os.path.exists(RATINGS_FILE):
+    import sqlite3
+    db_file = os.path.join(DATA_DIR, "ratings.db")
+    if not os.path.exists(db_file):
         return []
-    with open(RATINGS_FILE) as f:
-        return json.load(f)
+    try:
+        conn = sqlite3.connect(db_file)
+        rows = conn.execute(
+            "SELECT event_json, rating FROM ratings"
+        ).fetchall()
+        conn.close()
+        return [{"event": json.loads(r[0]), "rating": r[1]} for r in rows]
+    except Exception:
+        return []
 
 
 def _train_model(ratings: list):

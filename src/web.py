@@ -22,6 +22,7 @@ PORT = 8080
 DATA_DIR     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 SAMPLE_FILE  = os.path.join(DATA_DIR, "sample_events.json")
 RATINGS_FILE = os.path.join(DATA_DIR, "ratings.json")
+DB_FILE      = os.path.join(DATA_DIR, "ratings.db")
 
 TYPE_COLORS = {
     "sports": "#5b9cf6",
@@ -33,30 +34,65 @@ TYPE_COLORS = {
 
 # ── Data helpers ───────────────────────────────────────────────────────────────
 
+def _db():
+    import sqlite3
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ratings (
+            event_name TEXT PRIMARY KEY,
+            event_json TEXT NOT NULL,
+            rating     INTEGER NOT NULL,
+            rated_at   TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    return conn
+
+
 def _load_ratings():
-    if not os.path.exists(RATINGS_FILE):
+    try:
+        with _db() as conn:
+            rows = conn.execute(
+                "SELECT event_json, rating, rated_at FROM ratings"
+            ).fetchall()
+        return [{"event": _json.loads(r[0]), "rating": r[1], "rated_at": r[2]} for r in rows]
+    except Exception:
         return []
-    with open(RATINGS_FILE) as f:
-        return _json.load(f)
 
 
 def _save_rating(event: dict, rating: int):
-    """Upsert: update existing entry by name, or append."""
-    ratings = _load_ratings()
-    entry = {
-        "event":    event,
-        "rating":   rating,
-        "rated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    for i, r in enumerate(ratings):
-        if r["event"]["name"] == event["name"]:
-            ratings[i] = entry
-            break
-    else:
-        ratings.append(entry)
     os.makedirs(DATA_DIR, exist_ok=True)
-    with open(RATINGS_FILE, "w") as f:
-        _json.dump(ratings, f, indent=2)
+    with _db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO ratings (event_name, event_json, rating, rated_at) "
+            "VALUES (?, ?, ?, ?)",
+            (event["name"], _json.dumps(event), rating,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+
+
+def _migrate_json_to_db():
+    """One-time: import existing ratings.json into the SQLite DB."""
+    if not os.path.exists(RATINGS_FILE):
+        return
+    try:
+        with open(RATINGS_FILE) as f:
+            old = _json.load(f)
+    except Exception:
+        return
+    if not old:
+        return
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with _db() as conn:
+        for r in old:
+            conn.execute(
+                "INSERT OR IGNORE INTO ratings (event_name, event_json, rating, rated_at) "
+                "VALUES (?, ?, ?, ?)",
+                (r["event"]["name"], _json.dumps(r["event"]),
+                 r["rating"], r.get("rated_at", "")),
+            )
+        conn.commit()
 
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
@@ -469,11 +505,12 @@ function attachRating(row, onSuccess) {
       const val   = btn.dataset.val;
       const event = JSON.parse(row.dataset.event);
       try {
-        await fetch('/rate', {
+        const resp = await fetch('/rate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event, rating: parseInt(val, 10) }),
         });
+        if (!resp.ok) throw new Error('save failed');
         row.dataset.rated = val;
         CURRENT_RATINGS[event.name] = parseInt(val, 10);
         row.classList.remove('open');
@@ -891,6 +928,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    _migrate_json_to_db()
     server = HTTPServer(("", PORT), _Handler)
     url = f"http://localhost:{PORT}"
     print(f"Chi This Week → {url}")
