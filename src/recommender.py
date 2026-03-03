@@ -199,12 +199,14 @@ def score_events(events: list) -> list:
                 classes = list(model.classes_)
                 idx_pos = classes.index(1)  if 1  in classes else None
                 idx_neu = classes.index(0)  if 0  in classes else None
+                idx_neg = classes.index(-1) if -1 in classes else None
 
                 for event in events:
                     proba = model.predict_proba([_features(event)])[0]
                     p_pos = proba[idx_pos] if idx_pos is not None else 0.0
                     p_neu = proba[idx_neu] if idx_neu is not None else 0.0
-                    event["score"] = round(p_pos + 0.5 * p_neu, 4)
+                    p_neg = proba[idx_neg] if idx_neg is not None else 0.0
+                    event["score"] = round(max(0.0, p_pos + 0.5 * p_neu - p_neg), 4)
 
                 return events
             except Exception:

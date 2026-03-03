@@ -722,6 +722,8 @@ def build_page():
     # Load ratings for dot indicators and training tab
     ratings     = _load_ratings()
     ratings_map = {r["event"]["name"]: r["rating"] for r in ratings}
+    neg_names   = {name for name, r in ratings_map.items() if r == -1}
+    all_events  = [e for e in all_events if e["name"] not in neg_names]
 
     # Build training event pool (sample + live, deduplicated by name)
     sample_events = []
