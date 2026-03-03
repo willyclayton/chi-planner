@@ -12,7 +12,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from weather import fetch_weather, weather_flags, format_day_summary
+from weather import fetch_weather, weather_flags, WMO_DESCRIPTIONS
 from sports import get_sports_events
 from do312 import fetch_do312_events
 from events import event_emoji
@@ -20,13 +20,293 @@ from events import event_emoji
 PORT = 8080
 
 TYPE_COLORS = {
-    "sports":  "#3b82f6",
-    "music":   "#a78bfa",
-    "comedy":  "#fbbf24",
-    "food":    "#34d399",
-    "other":   "#6b7280",
+    "sports": "#5b9cf6",
+    "music":  "#c084fc",
+    "comedy": "#fb923c",
+    "food":   "#34d399",
+    "other":  "#94a3b8",
 }
 
+# ── CSS ────────────────────────────────────────────────────────────────────────
+# Kept as a plain string so CSS braces don't need escaping in the f-string below.
+CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow+Condensed:wght@600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #09090d;
+  --s1:       #111118;
+  --s2:       #16161f;
+  --b1:       #1c1c28;
+  --b2:       #252535;
+  --text:     #eaecf0;
+  --dim:      #606278;
+  --amber:    #e8a73a;
+  --r:        10px;
+}
+
+/* Subtle film grain */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0.032;
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/></filter><rect width='300' height='300' filter='url(%23n)'/></svg>");
+  background-size: 180px;
+}
+
+body {
+  background: var(--bg);
+  background-image: radial-gradient(ellipse 90% 45% at 50% 0%, rgba(22, 28, 55, 0.7) 0%, transparent 65%);
+  color: var(--text);
+  font-family: 'DM Sans', -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: 960px;
+  margin: 0 auto;
+  padding-bottom: 5rem;
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+header {
+  padding: 2.75rem 1.5rem 2rem;
+}
+
+.site-title {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(2.6rem, 8vw, 4rem);
+  letter-spacing: -0.025em;
+  line-height: 1;
+  color: var(--text);
+  display: block;
+  margin-bottom: 0.75rem;
+  animation: fadeIn 0.6s ease both;
+}
+
+.header-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  animation: fadeIn 0.6s 0.1s ease both;
+}
+
+.header-chip {
+  font-size: 0.75rem;
+  color: var(--dim);
+  background: var(--s1);
+  border: 1px solid var(--b2);
+  border-radius: 100px;
+  padding: 0.22rem 0.7rem;
+  white-space: nowrap;
+}
+
+.header-sep { color: var(--b2); font-size: 0.7rem; }
+
+/* ── Section ── */
+.section {
+  padding: 0 1.5rem;
+  margin-bottom: 2.75rem;
+}
+
+.section-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.1rem;
+}
+
+.section-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.section-label.today { color: var(--amber); }
+
+.section-rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--b2), transparent);
+}
+
+/* ── Weather chips ── */
+.wx-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.1rem;
+}
+
+.wx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--s1);
+  border: 1px solid var(--b2);
+  border-radius: 100px;
+  padding: 0.28rem 0.8rem;
+  font-size: 0.76rem;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.wx-chip .wx-day { font-weight: 600; color: var(--text); }
+
+/* ── Cards grid ── */
+.events {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+
+@media (min-width: 520px) {
+  .events { grid-template-columns: 1fr 1fr; }
+}
+
+@media (min-width: 800px) {
+  .events { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+/* ── Card ── */
+.card {
+  position: relative;
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  border-radius: var(--r);
+  padding: 1rem 1.1rem;
+  text-decoration: none;
+  display: block;
+  overflow: hidden;
+
+  opacity: 0;
+  animation: slideUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 55ms);
+
+  transition: transform 0.2s ease, box-shadow 0.2s ease,
+              background 0.2s ease, border-color 0.2s ease;
+}
+
+/* Left accent bar drawn via pseudo-element */
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 12%; bottom: 12%;
+  width: 2px;
+  background: var(--tc, transparent);
+  border-radius: 0 2px 2px 0;
+  opacity: 0.85;
+  transition: top 0.2s ease, bottom 0.2s ease, opacity 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  background: var(--s2);
+  border-color: var(--b2);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+}
+
+.card:hover::before {
+  top: 8%; bottom: 8%;
+  opacity: 1;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card, .site-title, .header-sub {
+    animation: none; opacity: 1;
+  }
+  .card:hover { transform: none; }
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.card-emoji {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1.45;
+}
+
+.card-body { min-width: 0; }
+
+.card-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-venue {
+  font-size: 0.75rem;
+  color: var(--dim);
+  margin-top: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 0.69rem;
+  color: var(--dim);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+.flag {
+  margin-left: auto;
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+.no-events {
+  font-size: 0.85rem;
+  color: var(--dim);
+  font-style: italic;
+  padding: 0.2rem 0;
+}
+"""
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _fmt_time(t):
     h, m = map(int, t.split(":"))
@@ -35,77 +315,67 @@ def _fmt_time(t):
     return f"{h12}:{m:02d}{s}" if m else f"{h12}{s}"
 
 
-def _esc(s):
+def _e(s):
     return htmllib.escape(str(s))
 
 
-def _card(event, weather, show_day=True):
-    day = weather.get(event["date"])
-    flag = weather_flags(day, event["indoor_outdoor"]) if day else ""
-    emoji = event_emoji(event)
-    color = TYPE_COLORS.get(event["type"], "#6b7280")
-    name = _esc(event["name"])
-    venue = _esc(event["venue"])
-    nbhd = _esc(event["neighborhood"])
-    price = _esc(event["price_range"])
-    url = _esc(event["url"])
-    time_str = _fmt_time(event["time"])
-
-    if show_day:
-        d = date.fromisoformat(event["date"])
-        day_part = f"{d.strftime('%a')} {time_str}"
-    else:
-        day_part = time_str
-
-    return f"""
-<a class="card" href="{url}" target="_blank" rel="noopener"
-   style="border-left-color:{color}">
-  <div class="card-top">
-    <span class="card-emoji">{emoji}</span>
-    <div>
-      <div class="card-name">{name}</div>
-      <div class="card-venue">@ {venue}</div>
-    </div>
-  </div>
-  <div class="card-meta">
-    <span class="tag">{day_part}</span>
-    <span class="tag">{nbhd}</span>
-    <span class="tag">{price}</span>
-    <span class="flag">{flag}</span>
-  </div>
-</a>"""
-
-
-def _section(label, label_class, weather_html, event_cards, empty_msg):
-    cards_html = "\n".join(event_cards) if event_cards else (
-        f'<p class="no-events">{empty_msg}</p>'
-    )
-    return f"""
-<section class="section">
-  <div class="section-header">
-    <span class="section-label {label_class}">{label}</span>
-  </div>
-  {weather_html}
-  <div class="events">
-    {cards_html}
-  </div>
-</section>"""
-
-
-def _weather_pill(label, day):
+def _wx_chip(label, day):
     if not day:
         return ""
-    desc_parts = [f"{day['high']}°F"]
-    from weather import WMO_DESCRIPTIONS
+    parts = [f"{day['high']}°F"]
     desc = WMO_DESCRIPTIONS.get(day["weather_code"], "")
     if desc:
-        desc_parts.append(desc)
+        parts.append(desc)
     if day["precip_prob"] > 0:
-        desc_parts.append(f"{day['precip_prob']}% rain")
+        parts.append(f"{day['precip_prob']}% rain")
     flag = weather_flags(day, "outdoor")
-    summary = ", ".join(desc_parts)
-    return f'<span class="wx-pill"><b>{label}</b> {_esc(summary)} {flag}</span>'
+    return (
+        f'<span class="wx-chip">'
+        f'<span class="wx-day">{label}</span>'
+        f' {_e(", ".join(parts))} {flag}'
+        f'</span>'
+    )
 
+
+def _card(event, weather, show_day, idx):
+    day = weather.get(event["date"])
+    flag = weather_flags(day, event["indoor_outdoor"]) if day else ""
+    color = TYPE_COLORS.get(event["type"], "#6b7280")
+    d = date.fromisoformat(event["date"])
+    day_part = f"{d.strftime('%a')} {_fmt_time(event['time'])}" if show_day else _fmt_time(event["time"])
+
+    return (
+        f'<a class="card" href="{_e(event["url"])}" target="_blank" rel="noopener"'
+        f' style="--tc:{color};--i:{idx}">'
+        f'<div class="card-top">'
+        f'<span class="card-emoji">{event_emoji(event)}</span>'
+        f'<div class="card-body">'
+        f'<div class="card-name">{_e(event["name"])}</div>'
+        f'<div class="card-venue">@ {_e(event["venue"])}</div>'
+        f'</div></div>'
+        f'<div class="card-meta">'
+        f'<span class="tag">{_e(day_part)}</span>'
+        f'<span class="tag">{_e(event["neighborhood"])}</span>'
+        f'<span class="tag">{_e(event["price_range"])}</span>'
+        f'<span class="flag">{flag}</span>'
+        f'</div></a>'
+    )
+
+
+def _section(label, label_class, wx_html, cards, empty_msg):
+    inner = "\n".join(cards) if cards else f'<p class="no-events">{empty_msg}</p>'
+    return (
+        f'<section class="section">'
+        f'<div class="section-rule">'
+        f'<span class="section-label {label_class}">{label}</span>'
+        f'</div>'
+        f'{wx_html}'
+        f'<div class="events">{inner}</div>'
+        f'</section>'
+    )
+
+
+# ── Page builder ──────────────────────────────────────────────────────────────
 
 def build_page():
     today = date.today()
@@ -114,7 +384,6 @@ def build_page():
     saturday = monday + timedelta(days=5)
     sunday = monday + timedelta(days=6)
 
-    # ── Fetch data ──────────────────────────────────────────────────────
     try:
         weather = fetch_weather()
     except Exception:
@@ -132,7 +401,6 @@ def build_page():
 
     all_events = sorted(sports + culture, key=lambda e: (e["date"], e["time"]))
 
-    # ── Bucket into time blocks ─────────────────────────────────────────
     today_str = today.isoformat()
     weekend_dates = {friday.isoformat(), saturday.isoformat(), sunday.isoformat()}
     later_dates = set()
@@ -141,246 +409,83 @@ def build_page():
         later_dates.add(d.isoformat())
         d += timedelta(days=1)
 
-    today_events   = [e for e in all_events if e["date"] == today_str][:7]
-    weekend_events = [e for e in all_events if e["date"] in weekend_dates][:7]
-    later_events   = [e for e in all_events if e["date"] in later_dates][:7]
+    today_evts   = [e for e in all_events if e["date"] == today_str][:7]
+    weekend_evts = [e for e in all_events if e["date"] in weekend_dates][:7]
+    later_evts   = [e for e in all_events if e["date"] in later_dates][:7]
 
-    # ── Header values ───────────────────────────────────────────────────
-    week_highs = [w["high"] for w in weather.values() if w]
-    temp_range = f"{min(week_highs)}–{max(week_highs)}°F" if week_highs else ""
+    # Header
+    highs = [w["high"] for w in weather.values() if w]
+    temp_range = f"{min(highs)}–{max(highs)}°F" if highs else ""
     week_label = (
         f"{monday.strftime('%a')} {monday.strftime('%b')} {monday.day}"
-        f" – "
+        " – "
         f"{sunday.strftime('%a')} {sunday.strftime('%b')} {sunday.day}"
     )
 
-    # ── TODAY section ───────────────────────────────────────────────────
+    chips = f'<span class="header-chip">{_e(week_label)}</span>'
+    if temp_range:
+        chips += f'<span class="header-sep">·</span><span class="header-chip">🌡️ {_e(temp_range)}</span>'
+
+    header_html = (
+        f'<header>'
+        f'<span class="site-title">Chi This Week</span>'
+        f'<div class="header-sub">{chips}</div>'
+        f'</header>'
+    )
+
+    # TODAY
     today_wx = weather.get(today_str)
     today_wx_html = ""
     if today_wx:
-        today_wx_html = f'<div class="weather-block">{_weather_pill(today.strftime("%A"), today_wx)}</div>'
-    today_cards = [_card(e, weather, show_day=False) for e in today_events]
+        today_wx_html = f'<div class="wx-row">{_wx_chip(today.strftime("%A"), today_wx)}</div>'
     today_sec = _section(
-        f"TODAY · {today.strftime('%A')}",
+        f"Today · {today.strftime('%A')}",
         "today",
         today_wx_html,
-        today_cards,
-        "Nothing on the radar today."
+        [_card(e, weather, False, i) for i, e in enumerate(today_evts)],
+        "Nothing on the radar today.",
     )
 
-    # ── THIS WEEKEND section ────────────────────────────────────────────
+    # THIS WEEKEND
     wx_pills = "".join(
-        _weather_pill(lbl, weather.get(d.isoformat()))
+        _wx_chip(lbl, weather.get(d.isoformat()))
         for d, lbl in [(friday, "Fri"), (saturday, "Sat"), (sunday, "Sun")]
     )
-    weekend_wx_html = f'<div class="weather-block">{wx_pills}</div>' if wx_pills else ""
-    weekend_cards = [_card(e, weather) for e in weekend_events]
     weekend_sec = _section(
-        "THIS WEEKEND",
+        "This Weekend",
         "",
-        weekend_wx_html,
-        weekend_cards,
-        "Nothing lined up yet."
+        f'<div class="wx-row">{wx_pills}</div>' if wx_pills else "",
+        [_card(e, weather, True, i) for i, e in enumerate(weekend_evts)],
+        "Nothing lined up yet.",
     )
 
-    # ── LATER THIS WEEK section ─────────────────────────────────────────
-    later_cards = [_card(e, weather) for e in later_events]
+    # LATER THIS WEEK
     later_sec = _section(
-        "LATER THIS WEEK",
+        "Later This Week",
         "",
         "",
-        later_cards,
-        "Quiet stretch — save your money 💤"
+        [_card(e, weather, True, i) for i, e in enumerate(later_evts)],
+        "Quiet stretch — save your money 💤",
     )
 
-    # ── Assemble page ───────────────────────────────────────────────────
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chi This Week</title>
-  <style>
-    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-
-    :root {{
-      --bg:           #0f1117;
-      --surface:      #1c1e26;
-      --surface-hover:#22252f;
-      --border:       #272a36;
-      --text:         #dde2ec;
-      --muted:        #5c6275;
-      --muted2:       #8891a5;
-      --accent:       #5b9cf6;
-      --today:        #f0a040;
-      --radius:       8px;
-    }}
-
-    body {{
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
-      font-size: 15px;
-      line-height: 1.5;
-      max-width: 920px;
-      margin: 0 auto;
-      padding-bottom: 4rem;
-    }}
-
-    /* ── Header ── */
-    header {{
-      padding: 1.4rem 1.25rem 1.1rem;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 1.75rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-    }}
-    .site-title {{
-      font-size: 1.05rem;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--text);
-    }}
-    .header-meta {{
-      font-size: 0.82rem;
-      color: var(--muted2);
-    }}
-
-    /* ── Sections ── */
-    .section {{
-      padding: 0 1.25rem 0.5rem;
-      margin-bottom: 1.75rem;
-    }}
-    .section-label {{
-      font-size: 0.68rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted2);
-      margin-bottom: 0.75rem;
-      display: block;
-    }}
-    .section-label.today {{
-      color: var(--today);
-    }}
-
-    /* ── Weather block ── */
-    .weather-block {{
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 0.55rem 0.9rem;
-      margin-bottom: 0.75rem;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.25rem 1.25rem;
-    }}
-    .wx-pill {{
-      font-size: 0.8rem;
-      color: var(--muted2);
-      white-space: nowrap;
-    }}
-    .wx-pill b {{
-      color: var(--text);
-      font-weight: 600;
-    }}
-
-    /* ── Event cards grid ── */
-    .events {{
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 0.5rem;
-    }}
-    @media (min-width: 540px) {{
-      .events {{ grid-template-columns: 1fr 1fr; }}
-    }}
-    @media (min-width: 780px) {{
-      .events {{ grid-template-columns: 1fr 1fr 1fr; }}
-    }}
-
-    /* ── Card ── */
-    .card {{
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-left: 3px solid transparent;
-      border-radius: var(--radius);
-      padding: 0.75rem 0.9rem;
-      text-decoration: none;
-      display: block;
-      transition: background 0.12s, border-color 0.12s;
-    }}
-    .card:hover {{
-      background: var(--surface-hover);
-      border-color: #353848;
-      border-left-color: inherit;
-    }}
-    .card-top {{
-      display: flex;
-      align-items: flex-start;
-      gap: 0.55rem;
-    }}
-    .card-emoji {{
-      font-size: 1.05rem;
-      flex-shrink: 0;
-      margin-top: 1px;
-    }}
-    .card-name {{
-      font-size: 0.88rem;
-      font-weight: 500;
-      color: var(--text);
-      line-height: 1.35;
-    }}
-    .card-venue {{
-      font-size: 0.78rem;
-      color: var(--muted2);
-      margin-top: 0.1rem;
-    }}
-    .card-meta {{
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.3rem;
-      margin-top: 0.6rem;
-    }}
-    .tag {{
-      font-size: 0.72rem;
-      color: var(--muted2);
-      background: rgba(255,255,255,0.05);
-      border-radius: 3px;
-      padding: 0.15rem 0.45rem;
-      white-space: nowrap;
-    }}
-    .flag {{
-      font-size: 0.85rem;
-      margin-left: auto;
-    }}
-
-    .no-events {{
-      font-size: 0.85rem;
-      color: var(--muted);
-      padding: 0.35rem 0;
-    }}
-  </style>
+  <style>{CSS}</style>
 </head>
 <body>
-  <header>
-    <span class="site-title">Chi This Week</span>
-    <span class="header-meta">
-      {_esc(week_label)}
-      {"&nbsp;·&nbsp;🌡️ Highs " + _esc(temp_range) if temp_range else ""}
-    </span>
-  </header>
-
+  {header_html}
   {today_sec}
   {weekend_sec}
   {later_sec}
 </body>
 </html>"""
 
+
+# ── Server ────────────────────────────────────────────────────────────────────
 
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -392,14 +497,14 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, fmt, *args):
-        pass  # quiet
+        pass
 
 
 def main():
     server = HTTPServer(("", PORT), _Handler)
     url = f"http://localhost:{PORT}"
     print(f"Chi This Week → {url}")
-    print("Ctrl+C to stop\n")
+    print("Ctrl+C to stop")
     threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
