@@ -292,6 +292,14 @@ function fmtDate(iso) {
     .toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
 }
 
+function fmtShortDate(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  const day = d.toLocaleDateString('en-US', {weekday:'short'});
+  const m = d.getMonth() + 1;
+  const dt = d.getDate();
+  return `${day} ${m}/${dt}`;
+}
+
 // ── Render ─────────────────────────────────────────────────────────────────
 function render() {
   const isTrain = currentTab === 'train';
@@ -310,46 +318,45 @@ function render() {
 }
 
 function renderMyWeek(evts) {
-  const SECTIONS = [
-    { key: 'today',   label: 'Today',          dates: TODAY_DATE ? [TODAY_DATE] : [] },
-    { key: 'weekend', label: 'This Weekend',    dates: WEEKEND_DATES },
-    { key: 'later',   label: 'Later This Week', dates: LATER_DATES   },
-  ];
+  const byDate = {};
+  evts.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push(e);
+  });
 
+  const dates = Object.keys(byDate).sort();
   let html = '';
   let total = 0;
 
-  SECTIONS.forEach(sec => {
-    const secEvts = evts.filter(e => sec.dates.includes(e.date)).slice(0, 7);
-    if (!secEvts.length) return;
-    total += secEvts.length;
+  dates.forEach(d => {
+    const dayEvts = byDate[d].slice(0, 7);
+    total += dayEvts.length;
 
-    const isToday   = sec.key === 'today';
-    const titleCls  = isToday ? 'section-title today-title' : 'section-title';
-    const subline   = isToday ? fmtDate(TODAY_DATE) : '';
+    const dt      = new Date(d + 'T12:00:00');
+    const dayName = dt.toLocaleDateString('en-US', {weekday:'long'});
+    const m       = dt.getMonth() + 1;
+    const day     = dt.getDate();
+    const isToday = d === TODAY_DATE;
+    const titleCls = isToday ? 'section-title today-title' : 'section-title';
 
-    // Weather chips for this section
+    const wx = WEATHER_DATA[d];
     let wxHtml = '';
-    sec.dates.forEach(d => {
-      const wx = WEATHER_DATA[d];
-      if (!wx) return;
-      const dayName = new Date(d + 'T12:00:00')
-        .toLocaleDateString('en-US', {weekday:'short'});
+    if (wx) {
       let txt = `${esc(wx.high)}\u00B0F`;
-      if (wx.desc)         txt += ` \u00B7 ${esc(wx.desc)}`;
-      if (wx.precip_prob)  txt += ` \u00B7 ${wx.precip_prob}% rain`;
-      wxHtml += `<span class="wx-chip"><span class="wx-day">${dayName}</span> ${txt}${wx.flag ? ' ' + wx.flag : ''}</span>`;
-    });
+      if (wx.desc)        txt += ` \u00B7 ${esc(wx.desc)}`;
+      if (wx.precip_prob) txt += ` \u00B7 ${wx.precip_prob}% rain`;
+      wxHtml = `<div class="wx-row"><span class="wx-chip">${txt}${wx.flag ? ' ' + wx.flag : ''}</span></div>`;
+    }
 
     html += `
 <div class="section-block">
   <div class="section-header">
-    <span class="${titleCls}">${sec.label}</span>
-    ${subline ? `<span class="section-date">${subline}</span>` : ''}
+    <span class="${titleCls}">${dayName}</span>
+    <span class="section-date">${m}/${day}</span>
   </div>
   <hr class="section-rule">
-  ${wxHtml ? `<div class="wx-row">${wxHtml}</div>` : ''}
-  ${secEvts.map(e => buildRow(e, false)).join('')}
+  ${wxHtml}
+  ${dayEvts.map(e => buildRow(e, false)).join('')}
 </div>`;
   });
 
@@ -377,7 +384,8 @@ function buildRow(e, showHeart) {
   const outdoorFlag = (e.indoor_outdoor === 'outdoor' || e.indoor_outdoor === 'mixed')
     ? `<span class="outdoor-flag" title="Outdoor \u2014 check weather">\uD83C\uDF24 outdoors</span>` : '';
 
-  const meta = [e.venue, e.neighborhood, fmtTime(e.time)].filter(Boolean).join(' \u00B7 ');
+  const when = [fmtShortDate(e.date), fmtTime(e.time)].filter(Boolean).join(' @ ');
+  const meta = [e.venue, e.neighborhood, when].filter(Boolean).join(' \u00B7 ');
 
   const heartBtn = showHeart
     ? `<button class="heart-btn${isLiked ? ' liked' : ''}" data-id="${esc(e.id)}" onclick="toggleLike(event,this)">${isLiked ? '\u2665' : '\u2661'}</button>`
