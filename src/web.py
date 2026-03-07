@@ -306,15 +306,18 @@ function render() {
   document.getElementById('train-counter').classList.toggle('hidden', !isTrain);
   document.getElementById('like-count').textContent = likedIds.size;
 
-  let evts = ALL_EVENTS;
-  if (currentCat !== 'all') evts = evts.filter(e => e.type === currentCat);
-
   if (isTrain) {
-    renderTrain(evts);
-  } else {
-    if (currentMode === 'picks') evts = evts.filter(e => (e.score || 0) >= SCORE_THRESHOLD);
-    renderMyWeek(evts);
+    renderTrain(ALL_EVENTS);
+    return;
   }
+
+  // My Week tab
+  let evts = ALL_EVENTS;
+  if (currentMode === 'picks') {
+    if (currentCat !== 'all') evts = evts.filter(e => e.type === currentCat);
+    evts = evts.filter(e => (e.score || 0) >= SCORE_THRESHOLD);
+  }
+  renderMyWeek(evts);
 }
 
 function renderMyWeek(evts) {
@@ -475,10 +478,7 @@ render();
 
 def build_page():
     today    = date.today()
-    monday   = today - timedelta(days=today.weekday())
-    friday   = monday + timedelta(days=4)
-    saturday = monday + timedelta(days=5)
-    sunday   = monday + timedelta(days=6)
+    end_date = today + timedelta(days=7)
 
     # ── Weather ──────────────────────────────────────────────────────────────
     try:
@@ -493,15 +493,18 @@ def build_page():
         except Exception:
             return []
 
-    sports = _safe(get_sports_events, monday, sunday)
-    culture = _safe(fetch_do312_events, monday, sunday)
-    tm     = _safe(fetch_ticketmaster_events, monday, sunday)
-    eb     = _safe(fetch_eventbrite_events, monday, sunday)
-    parks  = _safe(fetch_parks_events, monday, sunday)
+    sports = _safe(get_sports_events, today, end_date)
+    culture = _safe(fetch_do312_events, today, end_date)
+    tm     = _safe(fetch_ticketmaster_events, today, end_date)
+    eb     = _safe(fetch_eventbrite_events, today, end_date)
+    parks  = _safe(fetch_parks_events, today, end_date)
 
-    # Merge + dedup by name+date
+    # Merge + dedup by name+date; drop anything before today
+    today_str = today.isoformat()
     seen, unique = set(), []
     for e in sports + culture + tm + eb + parks:
+        if e.get("date", "") < today_str:
+            continue
         key = f"{e['name'].lower()}|{e['date']}"
         if key not in seen:
             seen.add(key)
@@ -522,13 +525,15 @@ def build_page():
         from events import event_emoji   # noqa: avoids unused import warning
         pass
 
-    # ── Time buckets ──────────────────────────────────────────────────────────
-    today_str     = today.isoformat()
-    weekend_dates = [friday.isoformat(), saturday.isoformat(), sunday.isoformat()]
+    # ── Time buckets (today + next 7 days) ────────────────────────────────────
+    weekend_dates = []
     later_dates   = []
     d = today + timedelta(days=1)
-    while d < friday:
-        later_dates.append(d.isoformat())
+    while d <= end_date:
+        if d.weekday() in (4, 5, 6):  # Fri/Sat/Sun
+            weekend_dates.append(d.isoformat())
+        else:
+            later_dates.append(d.isoformat())
         d += timedelta(days=1)
 
     # ── Weather for JS ────────────────────────────────────────────────────────
@@ -546,7 +551,7 @@ def build_page():
     week_label = (
         f"{today.strftime('%b')} {today.day}"
         " \u2013 "
-        f"{sunday.strftime('%b')} {sunday.day}, {sunday.year}"
+        f"{end_date.strftime('%b')} {end_date.day}, {end_date.year}"
     )
 
     today_wx  = weather.get(today_str, {}) or {}
