@@ -306,15 +306,18 @@ function render() {
   document.getElementById('train-counter').classList.toggle('hidden', !isTrain);
   document.getElementById('like-count').textContent = likedIds.size;
 
-  let evts = ALL_EVENTS;
-  if (currentCat !== 'all') evts = evts.filter(e => e.type === currentCat);
-
   if (isTrain) {
-    renderTrain(evts);
-  } else {
-    if (currentMode === 'picks') evts = evts.filter(e => (e.score || 0) >= SCORE_THRESHOLD);
-    renderMyWeek(evts);
+    renderTrain(ALL_EVENTS);
+    return;
   }
+
+  // My Week tab
+  let evts = ALL_EVENTS;
+  if (currentMode === 'picks') {
+    if (currentCat !== 'all') evts = evts.filter(e => e.type === currentCat);
+    evts = evts.filter(e => (e.score || 0) >= SCORE_THRESHOLD);
+  }
+  renderMyWeek(evts);
 }
 
 function renderMyWeek(evts) {
