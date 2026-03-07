@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chi This Week</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      background: #fafafa;
+      color: #1a1a1a;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    #app {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+
+    .site-title {
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      color: #1a1a1a;
+    }
+
+    /* Tabs: My Week / Train */
+    .tabs {
+      display: flex;
+      gap: 12px;
+    }
+
+    .tab {
+      font-size: 13px;
+      color: #999;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      letter-spacing: 0;
+      font-family: inherit;
+      transition: color 0.1s;
+    }
+
+    .tab:hover { color: #555; }
+
+    .tab.active {
+      color: #1a1a1a;
+      font-weight: 500;
+    }
+
+    /* Mode toggle */
+    .mode-toggle {
+      display: flex;
+      gap: 10px;
+    }
+
+    .mode-btn {
+      font-size: 12px;
+      color: #aaa;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      transition: color 0.1s;
+    }
+
+    .mode-btn:hover { color: #555; }
+
+    .mode-btn.active {
+      color: #1a1a1a;
+      font-weight: 500;
+    }
+
+    /* Weather bar */
+    .weather-bar {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 20px;
+      letter-spacing: 0.01em;
+    }
+
+    /* Category filters */
+    .filters {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .filter-link {
+      font-size: 12px;
+      color: #aaa;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      transition: color 0.1s;
+    }
+
+    .filter-link:hover { color: #555; }
+
+    .filter-link.active {
+      color: #1a1a1a;
+      font-weight: 500;
+    }
+
+    /* Section headers */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 4px;
+      margin-top: 28px;
+    }
+
+    .section-header:first-of-type { margin-top: 0; }
+
+    .section-rule {
+      flex: 1;
+      height: 1px;
+      background: #e0e0e0;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #bbb;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    /* Event list */
+    .event-list {
+      list-style: none;
+    }
+
+    .event-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #ebebeb;
+      cursor: default;
+    }
+
+    .event-row:last-child {
+      border-bottom: none;
+    }
+
+    .event-row.hidden {
+      display: none;
+    }
+
+    /* Color dot */
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Event info */
+    .event-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 0;
+      flex-wrap: wrap;
+    }
+
+    .event-name {
+      font-size: 14px;
+      color: #1a1a1a;
+      font-weight: 400;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-sep {
+      color: #ccc;
+      margin: 0 5px;
+      font-size: 13px;
+    }
+
+    .event-venue {
+      font-size: 13px;
+      color: #888;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-time {
+      font-size: 13px;
+      color: #aaa;
+      white-space: nowrap;
+      margin-left: 5px;
+    }
+
+    .event-time::before {
+      content: '—';
+      margin-right: 5px;
+      color: #ddd;
+    }
+
+    .event-price {
+      font-size: 12px;
+      color: #bbb;
+      white-space: nowrap;
+      margin-left: 5px;
+    }
+
+    /* Right side: star + heart */
+    .event-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .star {
+      font-size: 11px;
+      color: #dab84a;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .star.visible {
+      opacity: 1;
+    }
+
+    .heart-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px 4px;
+      font-size: 14px;
+      line-height: 1;
+      color: #ddd;
+      transition: color 0.15s;
+      font-family: inherit;
+    }
+
+    .heart-btn:hover {
+      color: #f87171;
+    }
+
+    .heart-btn.liked {
+      color: #ef4444;
+    }
+
+    /* Train tab */
+    .train-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .train-count {
+      font-size: 12px;
+      color: #aaa;
+    }
+
+    .train-empty {
+      font-size: 13px;
+      color: #bbb;
+      padding: 24px 0;
+      text-align: center;
+    }
+
+    /* Train view row — heart is more prominent */
+    .train-row .heart-btn {
+      font-size: 18px;
+      color: #ef4444;
+    }
+
+    .train-row .heart-btn:hover {
+      color: #b91c1c;
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+  // ── Data ──────────────────────────────────────────────────────────────────
+
+  const EVENTS = [
+    {
+      id: 1,
+      name: "Jason Isbell & The 400 Unit",
+      venue: "Thalia Hall",
+      neighborhood: "Pilsen",
+      day: "Fri",
+      time: "8pm",
+      price: "$$$",
+      category: "music",
+      recommended: true,
+      section: "weekend"
+    },
+    {
+      id: 2,
+      name: "Blackhawks vs. Wild",
+      venue: "United Center",
+      neighborhood: "West Loop",
+      day: "Fri",
+      time: "7:30pm",
+      price: "$$$",
+      category: "sports",
+      recommended: false,
+      section: "weekend"
+    },
+    {
+      id: 3,
+      name: "Empty Bottle: Ryley Walker",
+      venue: "Empty Bottle",
+      neighborhood: "Ukrainian Village",
+      day: "Thu",
+      time: "9pm",
+      price: "$",
+      category: "music",
+      recommended: true,
+      section: "today"
+    },
+    {
+      id: 4,
+      name: "Chicago Restaurant Week: Smyth",
+      venue: "Smyth",
+      neighborhood: "West Loop",
+      day: "Thu",
+      time: "6pm",
+      price: "$$$",
+      category: "food",
+      recommended: false,
+      section: "today"
+    },
+    {
+      id: 5,
+      name: "Cubs vs. Cardinals",
+      venue: "Wrigley Field",
+      neighborhood: "Wrigleyville",
+      day: "Sat",
+      time: "1:20pm",
+      price: "$$",
+      category: "sports",
+      recommended: true,
+      section: "weekend"
+    },
+    {
+      id: 6,
+      name: "Second City: Main Stage",
+      venue: "Second City",
+      neighborhood: "Old Town",
+      day: "Sat",
+      time: "8pm",
+      price: "$$",
+      category: "comedy",
+      recommended: true,
+      section: "weekend"
+    },
+    {
+      id: 7,
+      name: "Taste of Randolph Street",
+      venue: "Randolph St",
+      neighborhood: "West Loop",
+      day: "Sat",
+      time: "12pm",
+      price: "free",
+      category: "festival",
+      recommended: true,
+      section: "weekend"
+    },
+    {
+      id: 8,
+      name: "Lyric Opera: Marriage of Figaro",
+      venue: "Lyric Opera House",
+      neighborhood: "Streeterville",
+      day: "Sat",
+      time: "7:30pm",
+      price: "$$$$",
+      category: "music",
+      recommended: false,
+      section: "weekend"
+    },
+    {
+      id: 9,
+      name: "Bulls vs. Celtics",
+      venue: "United Center",
+      neighborhood: "West Loop",
+      day: "Sun",
+      time: "3pm",
+      price: "$$",
+      category: "sports",
+      recommended: false,
+      section: "later"
+    },
+    {
+      id: 10,
+      name: "Do-Division Street Fest",
+      venue: "Milwaukee Ave",
+      neighborhood: "Wicker Park",
+      day: "Sun",
+      time: "11am",
+      price: "free",
+      category: "festival",
+      recommended: false,
+      section: "later"
+    },
+    {
+      id: 11,
+      name: "Second City: Sunday Improv Jam",
+      venue: "Second City",
+      neighborhood: "Old Town",
+      day: "Sun",
+      time: "7pm",
+      price: "$",
+      category: "comedy",
+      recommended: false,
+      section: "later"
+    },
+    {
+      id: 12,
+      name: "Publican Quality Meats brunch popup",
+      venue: "Publican Quality Meats",
+      neighborhood: "West Loop",
+      day: "Sun",
+      time: "10am",
+      price: "$$",
+      category: "food",
+      recommended: false,
+      section: "later"
+    }
+  ];
+
+  const DOT_COLORS = {
+    sports:   "#3b82f6",
+    music:    "#a855f7",
+    comedy:   "#f97316",
+    food:     "#10b981",
+    festival: "#f59e0b",
+    other:    "#6b7280"
+  };
+
+  const SECTIONS = [
+    { key: "today",   label: "Today" },
+    { key: "weekend", label: "This Weekend" },
+    { key: "later",   label: "Later" }
+  ];
+
+  const CATEGORIES = ["all", "sports", "music", "festivals", "comedy", "food"];
+
+  // ── State ─────────────────────────────────────────────────────────────────
+
+  let state = {
+    tab: "week",          // "week" | "train"
+    mode: "picks",        // "picks" | "all"
+    category: "all",
+    liked: {}
+  };
+
+  function loadState() {
+    try {
+      const saved = localStorage.getItem("chi-week-state");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        state.liked = parsed.liked || {};
+        state.mode = parsed.mode || "picks";
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem("chi-week-state", JSON.stringify({
+        liked: state.liked,
+        mode: state.mode
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  // ── Filtering ─────────────────────────────────────────────────────────────
+
+  function filteredEvents() {
+    return EVENTS.filter(ev => {
+      const catMatch = state.category === "all"
+        || ev.category === state.category
+        || (state.category === "festivals" && ev.category === "festival");
+      const modeMatch = state.mode === "all" || ev.recommended;
+      return catMatch && modeMatch;
+    });
+  }
+
+  function likedEvents() {
+    return EVENTS.filter(ev => state.liked[ev.id]);
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  function render() {
+    const app = document.getElementById("app");
+    app.innerHTML = "";
+
+    app.appendChild(renderHeader());
+    app.appendChild(renderWeather());
+
+    if (state.tab === "week") {
+      app.appendChild(renderFilters());
+      app.appendChild(renderWeekView());
+    } else {
+      app.appendChild(renderTrainView());
+    }
+  }
+
+  function renderHeader() {
+    const header = el("div", "header");
+
+    const left = el("div", "header-left");
+
+    const title = el("span", "site-title");
+    title.textContent = "Chi This Week";
+    left.appendChild(title);
+
+    const tabs = el("div", "tabs");
+
+    const weekTab = el("button", "tab" + (state.tab === "week" ? " active" : ""));
+    weekTab.textContent = "My Week";
+    weekTab.onclick = () => { state.tab = "week"; render(); };
+    tabs.appendChild(weekTab);
+
+    const trainTab = el("button", "tab" + (state.tab === "train" ? " active" : ""));
+    const likedCount = Object.values(state.liked).filter(Boolean).length;
+    trainTab.textContent = likedCount > 0 ? `Train (${likedCount})` : "Train";
+    trainTab.onclick = () => { state.tab = "train"; render(); };
+    tabs.appendChild(trainTab);
+
+    left.appendChild(tabs);
+    header.appendChild(left);
+
+    const modeToggle = el("div", "mode-toggle");
+
+    const picksBtn = el("button", "mode-btn" + (state.mode === "picks" ? " active" : ""));
+    picksBtn.textContent = "picks";
+    picksBtn.onclick = () => { state.mode = "picks"; saveState(); render(); };
+    modeToggle.appendChild(picksBtn);
+
+    const allBtn = el("button", "mode-btn" + (state.mode === "all" ? " active" : ""));
+    allBtn.textContent = "all";
+    allBtn.onclick = () => { state.mode = "all"; saveState(); render(); };
+    modeToggle.appendChild(allBtn);
+
+    header.appendChild(modeToggle);
+    return header;
+  }
+
+  function renderWeather() {
+    const bar = el("div", "weather-bar");
+    bar.textContent = "Today: 52°F, partly cloudy, 20% rain";
+    return bar;
+  }
+
+  function renderFilters() {
+    const filters = el("div", "filters");
+
+    CATEGORIES.forEach(cat => {
+      const link = el("button", "filter-link" + (state.category === cat ? " active" : ""));
+      link.textContent = cat;
+      link.onclick = () => { state.category = cat; render(); };
+      filters.appendChild(link);
+
+      if (cat !== CATEGORIES[CATEGORIES.length - 1]) {
+        const sep = el("span", "");
+        sep.textContent = "·";
+        sep.style.color = "#ccc";
+        sep.style.fontSize = "12px";
+        filters.appendChild(sep);
+      }
+    });
+
+    return filters;
+  }
+
+  function renderWeekView() {
+    const container = el("div", "");
+    const events = filteredEvents();
+
+    SECTIONS.forEach(({ key, label }) => {
+      const sectionEvents = events.filter(ev => ev.section === key);
+      if (sectionEvents.length === 0) return;
+
+      const sectionHeader = el("div", "section-header");
+      const rule = el("div", "section-rule");
+      const lbl = el("span", "section-label");
+      lbl.textContent = label;
+      sectionHeader.appendChild(rule);
+      sectionHeader.appendChild(lbl);
+      container.appendChild(sectionHeader);
+
+      const list = el("ul", "event-list");
+      sectionEvents.forEach(ev => {
+        list.appendChild(renderEventRow(ev, false));
+      });
+      container.appendChild(list);
+    });
+
+    if (events.length === 0) {
+      const empty = el("div", "train-empty");
+      empty.textContent = "No events match this filter.";
+      container.appendChild(empty);
+    }
+
+    return container;
+  }
+
+  function renderTrainView() {
+    const container = el("div", "");
+    const liked = likedEvents();
+
+    const header = el("div", "train-header");
+    const count = el("span", "train-count");
+    count.textContent = liked.length === 1 ? "1 liked" : `${liked.length} liked`;
+    header.appendChild(count);
+    container.appendChild(header);
+
+    if (liked.length === 0) {
+      const empty = el("div", "train-empty");
+      empty.textContent = "Heart events to save them here.";
+      container.appendChild(empty);
+      return container;
+    }
+
+    const list = el("ul", "event-list");
+    liked.forEach(ev => {
+      list.appendChild(renderEventRow(ev, true));
+    });
+    container.appendChild(list);
+
+    return container;
+  }
+
+  function renderEventRow(ev, isTrain) {
+    const row = el("li", "event-row" + (isTrain ? " train-row" : ""));
+
+    // Dot
+    const dot = el("span", "dot");
+    dot.style.background = DOT_COLORS[ev.category] || DOT_COLORS.other;
+    row.appendChild(dot);
+
+    // Info block
+    const info = el("div", "event-info");
+
+    const name = el("span", "event-name");
+    name.textContent = ev.name;
+    info.appendChild(name);
+
+    const sep1 = el("span", "event-sep");
+    sep1.textContent = " — ";
+    info.appendChild(sep1);
+
+    const venue = el("span", "event-venue");
+    venue.textContent = ev.venue;
+    info.appendChild(venue);
+
+    const time = el("span", "event-time");
+    time.textContent = `${ev.day} ${ev.time}`;
+    info.appendChild(time);
+
+    const price = el("span", "event-price");
+    price.textContent = ev.price;
+    info.appendChild(price);
+
+    row.appendChild(info);
+
+    // Actions
+    const actions = el("div", "event-actions");
+
+    const star = el("span", "star" + (ev.recommended ? " visible" : ""));
+    star.textContent = "★";
+    actions.appendChild(star);
+
+    const heart = el("button", "heart-btn" + (state.liked[ev.id] ? " liked" : ""));
+    heart.textContent = "♥";
+    heart.setAttribute("aria-label", state.liked[ev.id] ? "Unlike" : "Like");
+    heart.onclick = (e) => {
+      e.stopPropagation();
+      state.liked[ev.id] = !state.liked[ev.id];
+      if (!state.liked[ev.id]) delete state.liked[ev.id];
+      saveState();
+      render();
+    };
+    actions.appendChild(heart);
+
+    row.appendChild(actions);
+    return row;
+  }
+
+  // ── Utils ─────────────────────────────────────────────────────────────────
+
+  function el(tag, className) {
+    const e = document.createElement(tag || "div");
+    if (className) e.className = className.trim();
+    return e;
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+
+  loadState();
+  render();
+</script>
+</body>
+</html>

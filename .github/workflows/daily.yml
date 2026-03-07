@@ -1,8 +1,8 @@
-name: Weekly rebuild
+name: Daily rebuild
 
 on:
   schedule:
-    - cron: '0 13 * * 1'  # Every Monday at 1pm UTC = 7am Chicago
+    - cron: '0 13 * * *'  # 7am Chicago CT (UTC-6 winter / UTC-5 summer)
   workflow_dispatch:       # Manual trigger from GitHub Actions tab
 
 jobs:

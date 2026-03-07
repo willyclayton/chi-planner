@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chi This Week</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f0f13;
+      --surface:   #1a1a22;
+      --surface2:  #22222e;
+      --border:    #2a2a38;
+      --text:      #e8e6e1;
+      --muted:     #8a8899;
+      --sports:    #3b82f6;
+      --music:     #a855f7;
+      --comedy:    #f97316;
+      --food:      #10b981;
+      --festival:  #f59e0b;
+      --other:     #6b7280;
+      --accent:    #6366f1;
+    }
+
+    html { font-size: 15px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Top nav ── */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15, 15, 19, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 54px;
+    }
+
+    .nav-brand {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .nav-brand span { color: var(--accent); }
+
+    .nav-tabs {
+      display: flex;
+      gap: 4px;
+    }
+
+    .nav-tab {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.18s, color 0.18s;
+    }
+    .nav-tab:hover { background: var(--surface2); color: var(--text); }
+    .nav-tab.active {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    .weather-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .weather-chip .rain-icon { color: #60a5fa; }
+
+    /* ── Main layout ── */
+    .main {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 28px 20px 60px;
+    }
+
+    /* ── View panels ── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Mode toggle ── */
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .mode-toggle {
+      display: flex;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .mode-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 500;
+      padding: 5px 14px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background 0.18s, color 0.18s;
+      white-space: nowrap;
+    }
+    .mode-btn.active {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    /* ── Filter pills ── */
+    .filter-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 5px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.18s, color 0.18s, border-color 0.18s, box-shadow 0.22s;
+      text-transform: uppercase;
+    }
+    .pill:hover { color: var(--text); border-color: #44445a; }
+
+    .pill.active[data-cat="all"]      { color: var(--text);     border-color: var(--accent);   box-shadow: 0 0 10px 0 rgba(99,102,241,0.4);  background: rgba(99,102,241,0.1); }
+    .pill.active[data-cat="sports"]   { color: var(--sports);   border-color: var(--sports);   box-shadow: 0 0 10px 0 rgba(59,130,246,0.4);  background: rgba(59,130,246,0.08); }
+    .pill.active[data-cat="music"]    { color: var(--music);    border-color: var(--music);    box-shadow: 0 0 10px 0 rgba(168,85,247,0.4);  background: rgba(168,85,247,0.08); }
+    .pill.active[data-cat="festival"] { color: var(--festival); border-color: var(--festival); box-shadow: 0 0 10px 0 rgba(245,158,11,0.4);  background: rgba(245,158,11,0.08); }
+    .pill.active[data-cat="comedy"]   { color: var(--comedy);   border-color: var(--comedy);   box-shadow: 0 0 10px 0 rgba(249,115,22,0.4);  background: rgba(249,115,22,0.08); }
+    .pill.active[data-cat="food"]     { color: var(--food);     border-color: var(--food);     box-shadow: 0 0 10px 0 rgba(16,185,129,0.4);  background: rgba(16,185,129,0.08); }
+
+    /* ── Time section header ── */
+    .section-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 30px 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Card grid ── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 14px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+      cursor: default;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      background: rgba(26, 26, 34, 0.85);
+      backdrop-filter: blur(8px) brightness(1.08);
+      -webkit-backdrop-filter: blur(8px) brightness(1.08);
+    }
+
+    /* Colored left border */
+    .card::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      border-radius: 14px 0 0 14px;
+      background: var(--cat-color, var(--other));
+    }
+
+    .card[data-cat="sports"]   { --cat-color: var(--sports); }
+    .card[data-cat="music"]    { --cat-color: var(--music); }
+    .card[data-cat="comedy"]   { --cat-color: var(--comedy); }
+    .card[data-cat="food"]     { --cat-color: var(--food); }
+    .card[data-cat="festival"] { --cat-color: var(--festival); }
+
+    .card-inner {
+      padding: 16px 16px 16px 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Top row: emoji + title + heart */
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .card-emoji {
+      font-size: 1.25rem;
+      line-height: 1.3;
+      flex-shrink: 0;
+    }
+
+    .card-title-wrap {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .card-title {
+      font-size: 0.92rem;
+      font-weight: 600;
+      line-height: 1.35;
+      color: var(--text);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .rec-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--cat-color, var(--accent));
+      margin-top: 3px;
+      text-transform: uppercase;
+    }
+    .rec-badge .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--cat-color, var(--accent));
+      display: inline-block;
+      box-shadow: 0 0 6px var(--cat-color, var(--accent));
+    }
+
+    /* Heart button */
+    .heart-btn {
+      background: none;
+      border: none;
+      font-size: 1.15rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 0 2px 4px;
+      flex-shrink: 0;
+      transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1);
+      filter: grayscale(1) brightness(0.6);
+    }
+    .heart-btn:hover { transform: scale(1.25); filter: grayscale(0.4) brightness(0.9); }
+    .heart-btn.liked {
+      filter: none;
+      transform: scale(1.1);
+      animation: heartPop 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    @keyframes heartPop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.45); }
+      100% { transform: scale(1.1); }
+    }
+
+    /* Meta row */
+    .card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .meta-time { color: var(--text); font-weight: 500; }
+    .meta-sep  { color: var(--border); }
+    .meta-price {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 1px 7px;
+      border-radius: 6px;
+      color: var(--muted);
+    }
+    .meta-price.free { color: var(--food); border-color: rgba(16,185,129,0.3); }
+
+    /* ── Train view ── */
+    .train-header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .train-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .liked-counter {
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px 10px;
+      transition: color 0.2s;
+    }
+    .liked-counter .count-num {
+      color: #f472b6;
+      font-weight: 700;
+    }
+
+    .train-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 14px;
+    }
+
+    /* Train cards: heart more prominent */
+    .train-card .heart-btn {
+      font-size: 1.4rem;
+    }
+
+    /* ── Utility ── */
+    .hidden { display: none !important; }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .top-nav { padding: 0 14px; }
+      .main { padding: 18px 12px 50px; }
+      .controls-row { flex-direction: column; align-items: flex-start; }
+      .card-grid, .train-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Subtle shimmer on recommended cards */
+    .card[data-rec="true"]::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.018) 0%, transparent 60%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top nav ── -->
+<nav class="top-nav">
+  <div class="nav-brand">Chi<span>.</span>ThisWeek</div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-view="week">My Week</button>
+    <button class="nav-tab" data-view="train">Train</button>
+  </div>
+
+  <div class="weather-chip">
+    <span>Sat 52°F · Partly cloudy</span>
+    <span class="rain-icon">· 20% 🌧️</span>
+  </div>
+</nav>
+
+<!-- ── Main ── -->
+<div class="main">
+
+  <!-- ════ MY WEEK VIEW ════ -->
+  <div class="view active" id="view-week">
+
+    <div class="controls-row">
+      <div class="filter-pills" id="filter-pills">
+        <button class="pill active" data-cat="all">All</button>
+        <button class="pill" data-cat="sports">Sports</button>
+        <button class="pill" data-cat="music">Music</button>
+        <button class="pill" data-cat="festival">Festivals</button>
+        <button class="pill" data-cat="comedy">Comedy</button>
+        <button class="pill" data-cat="food">Food</button>
+      </div>
+
+      <div class="mode-toggle">
+        <button class="mode-btn active" data-mode="picks">My Picks ✨</button>
+        <button class="mode-btn" data-mode="all">Everything</button>
+      </div>
+    </div>
+
+    <!-- TODAY -->
+    <div class="section-label" data-section="today">Today</div>
+    <div class="card-grid" id="grid-today"></div>
+
+    <!-- THIS WEEKEND -->
+    <div class="section-label" data-section="weekend">This Weekend</div>
+    <div class="card-grid" id="grid-weekend"></div>
+
+    <!-- LATER THIS WEEK -->
+    <div class="section-label" data-section="later">Later This Week</div>
+    <div class="card-grid" id="grid-later"></div>
+
+  </div>
+
+  <!-- ════ TRAIN VIEW ════ -->
+  <div class="view" id="view-train">
+    <div class="train-header">
+      <div class="train-title">All Events</div>
+      <div class="liked-counter"><span class="count-num" id="liked-count">0</span> liked so far</div>
+    </div>
+    <div class="train-grid" id="grid-train"></div>
+  </div>
+
+</div>
+
+<script>
+  /* ── Data ── */
+  const EVENTS = [
+    {
+      id: 1,
+      title: "Cubs vs. Cardinals @ Wrigley Field",
+      time: "Sat 1:20pm",
+      venue: "Wrigleyville",
+      price: "$$",
+      cat: "sports",
+      rec: true,
+      section: "weekend",
+      emoji: "🏟️",
+    },
+    {
+      id: 2,
+      title: "Thalia Hall: Jason Isbell & The 400 Unit",
+      time: "Fri 8pm",
+      venue: "Pilsen",
+      price: "$$$",
+      cat: "music",
+      rec: true,
+      section: "weekend",
+      emoji: "🎵",
+    },
+    {
+      id: 3,
+      title: "Lyric Opera: The Marriage of Figaro",
+      time: "Sat 7:30pm",
+      venue: "Streeterville",
+      price: "$$$$",
+      cat: "music",
+      rec: false,
+      section: "weekend",
+      emoji: "🎵",
+    },
+    {
+      id: 4,
+      title: "Second City: Main Stage",
+      time: "Sat 8pm",
+      venue: "Old Town",
+      price: "$$",
+      cat: "comedy",
+      rec: true,
+      section: "weekend",
+      emoji: "🎤",
+    },
+    {
+      id: 5,
+      title: "Chicago Restaurant Week: Smyth",
+      time: "Thu 6pm",
+      venue: "West Loop",
+      price: "$$$",
+      cat: "food",
+      rec: false,
+      section: "later",
+      emoji: "🍽️",
+    },
+    {
+      id: 6,
+      title: "Taste of Randolph Street",
+      time: "Sat 12pm",
+      venue: "West Loop",
+      price: "free",
+      cat: "festival",
+      rec: true,
+      section: "weekend",
+      emoji: "🎪",
+    },
+    {
+      id: 7,
+      title: "Blackhawks vs. Wild @ United Center",
+      time: "Fri 7:30pm",
+      venue: "West Loop",
+      price: "$$$",
+      cat: "sports",
+      rec: false,
+      section: "weekend",
+      emoji: "🏟️",
+    },
+    {
+      id: 8,
+      title: "Empty Bottle: Ryley Walker",
+      time: "Thu 9pm",
+      venue: "Ukrainian Village",
+      price: "$",
+      cat: "music",
+      rec: true,
+      section: "later",
+      emoji: "🎵",
+    },
+    {
+      id: 9,
+      title: "Bulls vs. Celtics @ United Center",
+      time: "Sun 3pm",
+      venue: "West Loop",
+      price: "$$",
+      cat: "sports",
+      rec: false,
+      section: "today",
+      emoji: "🏟️",
+    },
+    {
+      id: 10,
+      title: "Do-Division Street Fest",
+      time: "Sun 11am",
+      venue: "Wicker Park",
+      price: "free",
+      cat: "festival",
+      rec: false,
+      section: "today",
+      emoji: "🎪",
+    },
+    {
+      id: 11,
+      title: "Second City: Sunday Improv Jam",
+      time: "Sun 7pm",
+      venue: "Old Town",
+      price: "$",
+      cat: "comedy",
+      rec: false,
+      section: "today",
+      emoji: "🎤",
+    },
+    {
+      id: 12,
+      title: "Publican Quality Meats Brunch Popup",
+      time: "Sun 10am",
+      venue: "West Loop",
+      price: "$$",
+      cat: "food",
+      rec: false,
+      section: "today",
+      emoji: "🍽️",
+    },
+  ];
+
+  /* ── State ── */
+  const liked = new Set();
+  let activeView = "week";
+  let activeCat  = "all";
+  let activeMode = "picks";
+
+  /* ── Build a card element ── */
+  function buildCard(ev, isTrainCard = false) {
+    const card = document.createElement("div");
+    card.className = "card" + (isTrainCard ? " train-card" : "");
+    card.dataset.cat = ev.cat;
+    card.dataset.id  = ev.id;
+    card.dataset.rec = ev.rec;
+
+    const priceClass = ev.price === "free" ? "meta-price free" : "meta-price";
+
+    card.innerHTML = `
+      <div class="card-inner">
+        <div class="card-header">
+          <span class="card-emoji">${ev.emoji}</span>
+          <div class="card-title-wrap">
+            <div class="card-title">${ev.title}</div>
+            ${ev.rec ? `<div class="rec-badge"><span class="dot"></span> Recommended</div>` : ""}
+          </div>
+          <button
+            class="heart-btn${liked.has(ev.id) ? " liked" : ""}"
+            data-id="${ev.id}"
+            title="Like this event"
+            aria-label="Like ${ev.title}"
+          >❤️</button>
+        </div>
+        <div class="card-meta">
+          <span class="meta-time">${ev.time}</span>
+          <span class="meta-sep">·</span>
+          <span>${ev.venue}</span>
+          <span class="meta-sep">·</span>
+          <span class="${priceClass}">${ev.price}</span>
+        </div>
+      </div>
+    `;
+
+    card.querySelector(".heart-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleLike(ev.id);
+    });
+
+    return card;
+  }
+
+  /* ── Toggle like ── */
+  function toggleLike(id) {
+    if (liked.has(id)) {
+      liked.delete(id);
+    } else {
+      liked.add(id);
+    }
+    updateAllHearts(id);
+    updateLikedCounter();
+  }
+
+  function updateAllHearts(id) {
+    document.querySelectorAll(`.heart-btn[data-id="${id}"]`).forEach((btn) => {
+      if (liked.has(id)) {
+        btn.classList.add("liked");
+      } else {
+        btn.classList.remove("liked");
+        // re-trigger no animation
+        void btn.offsetWidth;
+      }
+    });
+  }
+
+  function updateLikedCounter() {
+    document.getElementById("liked-count").textContent = liked.size;
+  }
+
+  /* ── Render week view grids ── */
+  function renderWeek() {
+    const sections = ["today", "weekend", "later"];
+    const gridIds  = { today: "grid-today", weekend: "grid-weekend", later: "grid-later" };
+
+    sections.forEach((sec) => {
+      const grid = document.getElementById(gridIds[sec]);
+      grid.innerHTML = "";
+
+      const filtered = EVENTS.filter((ev) => {
+        if (ev.section !== sec) return false;
+        if (activeCat !== "all" && ev.cat !== activeCat) return false;
+        if (activeMode === "picks" && !ev.rec) return false;
+        return true;
+      });
+
+      const sectionWrap = grid.closest(".view").querySelector(`.section-label[data-section="${sec}"]`);
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `<p style="color:var(--muted);font-size:0.82rem;grid-column:1/-1;padding:4px 0 12px;">No events here for this filter.</p>`;
+        sectionWrap && (sectionWrap.style.display = "flex");
+      } else {
+        filtered.forEach((ev) => grid.appendChild(buildCard(ev, false)));
+        sectionWrap && (sectionWrap.style.display = "flex");
+      }
+    });
+  }
+
+  /* ── Render train view ── */
+  function renderTrain() {
+    const grid = document.getElementById("grid-train");
+    grid.innerHTML = "";
+    EVENTS.forEach((ev) => grid.appendChild(buildCard(ev, true)));
+  }
+
+  /* ── Nav tab switching ── */
+  document.querySelectorAll(".nav-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".nav-tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+
+      activeView = tab.dataset.view;
+      document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+      document.getElementById("view-" + activeView).classList.add("active");
+
+      if (activeView === "train") renderTrain();
+    });
+  });
+
+  /* ── Filter pills ── */
+  document.querySelectorAll(".pill").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      document.querySelectorAll(".pill").forEach((p) => p.classList.remove("active"));
+      pill.classList.add("active");
+      activeCat = pill.dataset.cat;
+      renderWeek();
+    });
+  });
+
+  /* ── Mode toggle ── */
+  document.querySelectorAll(".mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeMode = btn.dataset.mode;
+      renderWeek();
+    });
+  });
+
+  /* ── Init ── */
+  renderWeek();
+  updateLikedCounter();
+</script>
+</body>
+</html>

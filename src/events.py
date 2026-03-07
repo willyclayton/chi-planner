@@ -14,6 +14,7 @@ TYPE_EMOJIS = {
     "music": "🎵",
     "comedy": "🎤",
     "food": "🍽️",
+    "festival": "🎪",
     "other": "🎟️",
 }
 

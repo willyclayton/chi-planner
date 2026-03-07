@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chi This Week</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #faf8f4;
+      --ink: #1a1a1a;
+      --ink-light: #555;
+      --rule: #d6d0c4;
+      --gold: #c9a84c;
+      --blue-active: #1d4ed8;
+      --chip-sports: #3b82f6;
+      --chip-music: #a855f7;
+      --chip-comedy: #f97316;
+      --chip-food: #10b981;
+      --chip-festival: #f59e0b;
+      --chip-other: #6b7280;
+    }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── MASTHEAD ── */
+    .masthead {
+      border-bottom: 3px double var(--ink);
+      padding: 18px 32px 14px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .masthead-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .paper-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+    }
+
+    .paper-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 42px;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -0.5px;
+    }
+
+    .paper-tagline {
+      font-size: 12px;
+      color: var(--ink-light);
+      font-style: italic;
+      margin-top: 2px;
+    }
+
+    .masthead-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .weather-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff;
+      border: 1px solid var(--rule);
+      border-radius: 20px;
+      padding: 5px 13px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .mode-toggle {
+      display: flex;
+      border: 1.5px solid var(--ink);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .mode-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      letter-spacing: 0.04em;
+      color: var(--ink-light);
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .mode-btn:first-child {
+      border-right: 1.5px solid var(--ink);
+    }
+
+    .mode-btn.active {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    /* ── TOP NAV TABS ── */
+    .nav-tabs {
+      display: flex;
+      gap: 0;
+      padding: 0 32px;
+      border-bottom: 1px solid var(--rule);
+      margin-top: 0;
+    }
+
+    .nav-tab {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+      padding: 13px 20px 11px;
+      border-bottom: 3px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .nav-tab.active {
+      color: var(--blue-active);
+      border-bottom-color: var(--blue-active);
+    }
+
+    .nav-tab:hover:not(.active) {
+      color: var(--ink);
+    }
+
+    /* ── CATEGORY CHIPS ── */
+    .category-bar {
+      display: flex;
+      gap: 8px;
+      padding: 16px 32px;
+      border-bottom: 1px solid var(--rule);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .cat-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+      margin-right: 4px;
+    }
+
+    .cat-chip {
+      background: none;
+      border: 1.5px solid var(--rule);
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+      padding: 4px 12px;
+      transition: background 0.14s, color 0.14s, border-color 0.14s;
+    }
+
+    .cat-chip.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+
+    .cat-chip:hover:not(.active) {
+      border-color: var(--ink);
+      color: var(--ink);
+    }
+
+    /* ── MAIN CONTENT ── */
+    .content {
+      padding: 24px 32px 48px;
+      max-width: 860px;
+    }
+
+    /* ── SECTION HEADERS ── */
+    .section-block {
+      margin-bottom: 32px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+
+    .section-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+
+    .section-date {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+    }
+
+    .section-rule {
+      border: none;
+      border-top: 1.5px solid var(--ink);
+      margin-bottom: 2px;
+    }
+
+    /* ── EVENT ROWS ── */
+    .event-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--rule);
+      transition: background 0.12s;
+    }
+
+    .event-row:last-child {
+      border-bottom: none;
+    }
+
+    .event-row:hover {
+      background: rgba(0,0,0,0.02);
+      margin: 0 -8px;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    .type-chip {
+      display: inline-block;
+      border-radius: 3px;
+      padding: 2px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #fff;
+      white-space: nowrap;
+      flex-shrink: 0;
+      width: 72px;
+      text-align: center;
+    }
+
+    .type-chip.sports  { background: var(--chip-sports); }
+    .type-chip.music   { background: var(--chip-music); }
+    .type-chip.comedy  { background: var(--chip-comedy); }
+    .type-chip.food    { background: var(--chip-food); }
+    .type-chip.festival{ background: var(--chip-festival); }
+    .type-chip.other   { background: var(--chip-other); }
+
+    .event-main {
+      flex: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 0;
+      flex-wrap: wrap;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .event-name {
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .star-badge {
+      color: var(--gold);
+      font-size: 13px;
+      margin-left: 5px;
+      vertical-align: middle;
+    }
+
+    .event-meta {
+      color: var(--ink-light);
+      font-size: 13px;
+      margin-left: 4px;
+    }
+
+    .event-price {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-light);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── HEART BUTTON (Train tab) ── */
+    .heart-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 20px;
+      color: #ccc;
+      flex-shrink: 0;
+      transition: color 0.15s, transform 0.12s;
+      padding: 0 4px;
+      line-height: 1;
+    }
+
+    .heart-btn.liked {
+      color: #e53e3e;
+    }
+
+    .heart-btn:hover {
+      transform: scale(1.2);
+    }
+
+    /* ── TRAIN TAB COUNTER ── */
+    .train-counter {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      padding: 10px 18px;
+      margin-bottom: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .train-counter .count-num {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--blue-active);
+      line-height: 1;
+    }
+
+    .hidden { display: none !important; }
+
+    /* ── EMPTY STATE ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 0;
+      color: var(--ink-light);
+      font-style: italic;
+      font-size: 15px;
+    }
+
+    /* ── FOOTER RULE ── */
+    .footer-rule {
+      border: none;
+      border-top: 3px double var(--ink);
+      margin: 0 32px;
+      padding-top: 12px;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+      text-align: center;
+    }
+
+    @media (max-width: 600px) {
+      .masthead { flex-direction: column; align-items: flex-start; padding: 16px 16px 12px; }
+      .paper-title { font-size: 30px; }
+      .nav-tabs, .category-bar, .content { padding-left: 16px; padding-right: 16px; }
+      .footer-rule { margin: 0 16px; }
+      .event-main { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ MASTHEAD ══ -->
+<header class="masthead">
+  <div class="masthead-left">
+    <span class="paper-label">Chicago &nbsp;·&nbsp; Week of March 7, 2026</span>
+    <div class="paper-title">Chi This Week</div>
+    <div class="paper-tagline">Your personal guide to what's worth doing in the city</div>
+  </div>
+  <div class="masthead-right">
+    <div class="weather-chip">
+      🌥️ <strong>Sat 52°F</strong> &nbsp;Partly cloudy &nbsp;·&nbsp; 20% rain 🌧️
+    </div>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="btn-picks" onclick="setMode('picks')">My Picks ✨</button>
+      <button class="mode-btn" id="btn-all" onclick="setMode('all')">Everything</button>
+    </div>
+  </div>
+</header>
+
+<!-- ══ TOP NAV TABS ══ -->
+<nav class="nav-tabs">
+  <button class="nav-tab active" id="tab-myweek" onclick="setTab('myweek')">My Week</button>
+  <button class="nav-tab" id="tab-train" onclick="setTab('train')">Train</button>
+</nav>
+
+<!-- ══ CATEGORY BAR ══ -->
+<div class="category-bar">
+  <span class="cat-label">Section:</span>
+  <button class="cat-chip active" data-cat="all"      onclick="setCat(this,'all')">All</button>
+  <button class="cat-chip"        data-cat="sports"   onclick="setCat(this,'sports')">Sports</button>
+  <button class="cat-chip"        data-cat="music"    onclick="setCat(this,'music')">Music</button>
+  <button class="cat-chip"        data-cat="festival" onclick="setCat(this,'festival')">Festivals</button>
+  <button class="cat-chip"        data-cat="comedy"   onclick="setCat(this,'comedy')">Comedy</button>
+  <button class="cat-chip"        data-cat="food"     onclick="setCat(this,'food')">Food</button>
+</div>
+
+<!-- ══ MAIN CONTENT ══ -->
+<main class="content">
+
+  <!-- Train counter (only visible in Train tab) -->
+  <div class="train-counter hidden" id="train-counter">
+    <span class="count-num" id="like-count">0</span>
+    <span>events liked so far</span>
+  </div>
+
+  <!-- Day sections rendered by JS -->
+  <div id="event-list"></div>
+
+  <div class="empty-state hidden" id="empty-state">No events match your current filters.</div>
+
+</main>
+
+<hr class="footer-rule" />
+<div style="text-align:center;padding:12px 32px 24px;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#999;">
+  Chi This Week &nbsp;·&nbsp; Personal Edition &nbsp;·&nbsp; Not for redistribution
+</div>
+
+<script>
+  // ── DATA ──────────────────────────────────────────────────────────────────
+  const EVENTS = [
+    {
+      id: 1,
+      name: "Cubs vs. Cardinals",
+      venue: "Wrigley Field",
+      neighborhood: "Wrigleyville",
+      day: "Saturday",
+      time: "1:20pm",
+      price: "$$",
+      category: "sports",
+      recommended: true,
+      outdoor: true,
+    },
+    {
+      id: 2,
+      name: "Jason Isbell & The 400 Unit",
+      venue: "Thalia Hall",
+      neighborhood: "Pilsen",
+      day: "Friday",
+      time: "8pm",
+      price: "$$$",
+      category: "music",
+      recommended: true,
+      outdoor: false,
+    },
+    {
+      id: 3,
+      name: "Lyric Opera: Marriage of Figaro",
+      venue: "Lyric Opera House",
+      neighborhood: "Streeterville",
+      day: "Saturday",
+      time: "7:30pm",
+      price: "$$$$",
+      category: "music",
+      recommended: false,
+      outdoor: false,
+    },
+    {
+      id: 4,
+      name: "Second City: Main Stage",
+      venue: "Second City",
+      neighborhood: "Old Town",
+      day: "Saturday",
+      time: "8pm",
+      price: "$$",
+      category: "comedy",
+      recommended: true,
+      outdoor: false,
+    },
+    {
+      id: 5,
+      name: "Chicago Restaurant Week: Smyth",
+      venue: "Smyth",
+      neighborhood: "West Loop",
+      day: "Thursday",
+      time: "6pm",
+      price: "$$$",
+      category: "food",
+      recommended: false,
+      outdoor: false,
+    },
+    {
+      id: 6,
+      name: "Taste of Randolph Street",
+      venue: "Randolph St.",
+      neighborhood: "West Loop",
+      day: "Saturday",
+      time: "12pm",
+      price: "Free",
+      category: "festival",
+      recommended: true,
+      outdoor: true,
+    },
+    {
+      id: 7,
+      name: "Blackhawks vs. Wild",
+      venue: "United Center",
+      neighborhood: "West Loop",
+      day: "Friday",
+      time: "7:30pm",
+      price: "$$$",
+      category: "sports",
+      recommended: false,
+      outdoor: false,
+    },
+    {
+      id: 8,
+      name: "Ryley Walker",
+      venue: "Empty Bottle",
+      neighborhood: "Ukrainian Village",
+      day: "Thursday",
+      time: "9pm",
+      price: "$",
+      category: "music",
+      recommended: true,
+      outdoor: false,
+    },
+    {
+      id: 9,
+      name: "Bulls vs. Celtics",
+      venue: "United Center",
+      neighborhood: "West Loop",
+      day: "Sunday",
+      time: "3pm",
+      price: "$$",
+      category: "sports",
+      recommended: false,
+      outdoor: false,
+    },
+    {
+      id: 10,
+      name: "Do-Division Street Fest",
+      venue: "Division St.",
+      neighborhood: "Wicker Park",
+      day: "Sunday",
+      time: "11am",
+      price: "Free",
+      category: "festival",
+      recommended: false,
+      outdoor: true,
+    },
+    {
+      id: 11,
+      name: "Second City: Sunday Improv Jam",
+      venue: "Second City",
+      neighborhood: "Old Town",
+      day: "Sunday",
+      time: "7pm",
+      price: "$",
+      category: "comedy",
+      recommended: false,
+      outdoor: false,
+    },
+    {
+      id: 12,
+      name: "Publican Quality Meats brunch popup",
+      venue: "Publican Quality Meats",
+      neighborhood: "West Loop",
+      day: "Sunday",
+      time: "10am",
+      price: "$$",
+      category: "food",
+      recommended: false,
+      outdoor: false,
+    },
+  ];
+
+  const DAY_ORDER = ["Thursday", "Friday", "Saturday", "Sunday"];
+
+  // ── STATE ─────────────────────────────────────────────────────────────────
+  let currentTab  = "myweek";
+  let currentMode = "picks";
+  let currentCat  = "all";
+  let liked       = new Set();
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  function render() {
+    const list = document.getElementById("event-list");
+    const empty = document.getElementById("empty-state");
+    const counter = document.getElementById("train-counter");
+
+    // Show/hide train counter
+    counter.classList.toggle("hidden", currentTab !== "train");
+
+    // Update like count
+    document.getElementById("like-count").textContent = liked.size;
+
+    // Filter events
+    let filtered = EVENTS.filter(e => {
+      if (currentMode === "picks" && !e.recommended) return false;
+      if (currentCat !== "all" && e.category !== currentCat) return false;
+      return true;
+    });
+
+    list.innerHTML = "";
+
+    if (filtered.length === 0) {
+      empty.classList.remove("hidden");
+      return;
+    }
+    empty.classList.add("hidden");
+
+    // Group by day
+    const byDay = {};
+    DAY_ORDER.forEach(d => { byDay[d] = []; });
+    filtered.forEach(e => {
+      if (byDay[e.day]) byDay[e.day].push(e);
+    });
+
+    DAY_ORDER.forEach(day => {
+      const evts = byDay[day];
+      if (evts.length === 0) return;
+
+      const block = document.createElement("div");
+      block.className = "section-block";
+
+      block.innerHTML = `
+        <div class="section-header">
+          <span class="section-title">${day}</span>
+          <span class="section-date">${daySubline(day)}</span>
+        </div>
+        <hr class="section-rule" />
+      `;
+
+      evts.forEach(e => {
+        block.appendChild(buildRow(e));
+      });
+
+      list.appendChild(block);
+    });
+  }
+
+  function daySubline(day) {
+    const map = {
+      Thursday: "Mar 5",
+      Friday:   "Mar 6",
+      Saturday: "Mar 7",
+      Sunday:   "Mar 8",
+    };
+    return map[day] || "";
+  }
+
+  function buildRow(e) {
+    const row = document.createElement("div");
+    row.className = "event-row";
+
+    const priceDisplay = e.price === "Free"
+      ? '<span style="color:var(--chip-food);font-weight:700;font-size:11px;">FREE</span>'
+      : `<span class="event-price">${e.price}</span>`;
+
+    const starBadge = e.recommended
+      ? `<span class="star-badge" title="Recommended for you">★</span>`
+      : "";
+
+    const outdoorFlag = e.outdoor
+      ? `<span style="font-size:11px;color:#888;margin-left:6px;" title="Outdoor event — check weather">🌤 outdoors</span>`
+      : "";
+
+    let heartBtn = "";
+    if (currentTab === "train") {
+      const isLiked = liked.has(e.id);
+      heartBtn = `<button class="heart-btn ${isLiked ? 'liked' : ''}" onclick="toggleHeart(${e.id})" title="Like this event">${isLiked ? '♥' : '♡'}</button>`;
+    }
+
+    row.innerHTML = `
+      <span class="type-chip ${e.category}">${e.category}</span>
+      <div class="event-main">
+        <span class="event-name">${e.name}${starBadge}</span>
+        <span class="event-meta">&nbsp;·&nbsp;${e.venue}&nbsp;·&nbsp;${e.neighborhood}&nbsp;·&nbsp;${e.time}</span>
+        ${outdoorFlag}
+      </div>
+      ${priceDisplay}
+      ${heartBtn}
+    `;
+
+    return row;
+  }
+
+  // ── ACTIONS ───────────────────────────────────────────────────────────────
+  function setTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
+    document.getElementById("tab-" + tab).classList.add("active");
+    render();
+  }
+
+  function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+    document.getElementById("btn-" + mode).classList.add("active");
+    render();
+  }
+
+  function setCat(el, cat) {
+    currentCat = cat;
+    document.querySelectorAll(".cat-chip").forEach(c => c.classList.remove("active"));
+    el.classList.add("active");
+    render();
+  }
+
+  function toggleHeart(id) {
+    if (liked.has(id)) {
+      liked.delete(id);
+    } else {
+      liked.add(id);
+    }
+    render();
+  }
+
+  // ── BOOT ──────────────────────────────────────────────────────────────────
+  render();
+</script>
+</body>
+</html>

@@ -2,5 +2,10 @@
   "buildCommand": "python3 build.py",
   "outputDirectory": "public",
   "framework": null,
-  "installCommand": ""
+  "installCommand": "pip install -r requirements.txt",
+  "functions": {
+    "api/*.py": {
+      "runtime": "python3.9"
+    }
+  }
 }
