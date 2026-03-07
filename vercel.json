@@ -2,4 +2,4 @@
   "buildCommand": "python3 build.py",
   "outputDirectory": "public",
   "framework": null,
-  "installCommand": "pip install -r requirements.txt"}
+  "installCommand": "pip install --break-system-packages -r requirements.txt"}
