@@ -542,6 +542,7 @@ def build_page():
         if day:
             wx_data[ds] = {
                 "high":        day.get("high", 0),
+                "low":         day.get("low", 0),
                 "desc":        WMO_DESCRIPTIONS.get(day.get("weather_code", 0), ""),
                 "precip_prob": day.get("precip_prob", 0),
                 "flag":        weather_flags(day, "outdoor"),
