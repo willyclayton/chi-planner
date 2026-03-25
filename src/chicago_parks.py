@@ -5,12 +5,11 @@ from datetime import date
 
 # Socrata dataset endpoints to try, in order
 SOCRATA_URLS = [
-    "https://data.cityofchicago.org/resource/v8jy-3r9b.json",  # Park District Special Events
-    "https://data.cityofchicago.org/resource/4i6r-scuj.json",  # Chicago Cultural Events
+    "https://data.cityofchicago.org/resource/pk66-w54g.json",  # Parks Special Events/Permits
 ]
 
 # SoQL date field names to probe (datasets vary)
-DATE_FIELDS = ["start_date", "date", "event_date"]
+DATE_FIELDS = ["reservation_start_date", "start_date", "date", "event_date"]
 
 # Keywords that suggest a festival vs a generic other event
 FESTIVAL_KEYWORDS = ["festival", "fest ", "fair", "parade", "celebration", "market"]
@@ -44,10 +43,16 @@ def _parse_time(record):
         raw = record.get(field, "")
         if not raw:
             continue
-        # Grab first 5 chars in case it is 'HH:MM:SS' or 'HH:MM'
         cleaned = str(raw).strip()[:5]
         if len(cleaned) >= 4 and cleaned[2:3] == ":":
             return cleaned[:5]
+    # Try extracting time from ISO datetime fields
+    for field in DATE_FIELDS:
+        raw = record.get(field, "")
+        if raw and "T" in str(raw):
+            time_part = str(raw).split("T")[1][:5]
+            if len(time_part) >= 4 and time_part[2:3] == ":":
+                return time_part
     return "12:00"
 
 
@@ -113,6 +118,7 @@ def fetch_parks_events(week_start: date, week_end: date) -> list:
                 # --- name ---
                 name = (
                     record.get("event_name")
+                    or record.get("event_description")
                     or record.get("event_title")
                     or record.get("name")
                     or record.get("title")

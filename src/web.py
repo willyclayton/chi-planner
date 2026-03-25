@@ -13,6 +13,26 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+
+def _load_env():
+    """Load .env file into os.environ using stdlib only."""
+    env_path = os.path.join(os.path.dirname(__file__), os.pardir, ".env")
+    try:
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip("'\"")
+                os.environ.setdefault(key, value)
+    except FileNotFoundError:
+        pass
+
+
+_load_env()
+
 from weather import fetch_weather, weather_flags, WMO_DESCRIPTIONS
 from sports import get_sports_events
 from do312 import fetch_do312_events

@@ -11,11 +11,10 @@ from datetime import date
 
 # DCASE-specific Socrata dataset endpoints
 SOCRATA_URLS = [
-    "https://data.cityofchicago.org/resource/m3c6-iqrs.json",  # DCASE Special Events
-    "https://data.cityofchicago.org/resource/pk66-w54g.json",   # DCASE Cultural Events
+    "https://data.cityofchicago.org/resource/pk66-w54g.json",   # Parks Special Events/Permits
 ]
 
-DATE_FIELDS = ["start_date", "date", "event_date", "start_date_time"]
+DATE_FIELDS = ["reservation_start_date", "start_date", "date", "event_date", "start_date_time"]
 
 FESTIVAL_KEYWORDS = [
     "festival", "fest ", "fair", "parade", "celebration",
@@ -51,11 +50,18 @@ def _parse_time(record):
         cleaned = str(raw).strip()[:5]
         if len(cleaned) >= 4 and cleaned[2:3] == ":":
             return cleaned[:5]
+    # Try extracting time from ISO datetime fields
+    for field in DATE_FIELDS:
+        raw = record.get(field, "")
+        if raw and "T" in str(raw):
+            time_part = str(raw).split("T")[1][:5]
+            if len(time_part) >= 4 and time_part[2:3] == ":":
+                return time_part
     return "12:00"
 
 
 def _venue_name(record):
-    for field in ("event_location", "location", "venue", "park_name", "facility_name"):
+    for field in ("event_location", "location", "venue", "park_name", "park_facility_name", "facility_name"):
         val = record.get(field, "")
         if val:
             return str(val).strip()
@@ -106,6 +112,7 @@ def fetch_dcase_events(week_start: date, week_end: date) -> list:
 
                 name = (
                     record.get("event_name")
+                    or record.get("event_description")
                     or record.get("event_title")
                     or record.get("name")
                     or record.get("title")

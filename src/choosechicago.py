@@ -1,15 +1,15 @@
 """
-Choose Chicago scraper for festival and street event listings.
+Choose Chicago event source.
 
-Scrapes choosechicago.com/events/ using urllib + regex.
-Returns [] gracefully if the page is JS-rendered or unparseable.
+Uses the Tribe Events REST API at choosechicago.com instead of HTML scraping,
+since the site is a JS-rendered SPA with no server-side event markup.
 """
 import urllib.request
-import re
-import html
+import urllib.parse
+import json
 from datetime import date, datetime
 
-EVENTS_URL = "https://www.choosechicago.com/events/"
+API_URL = "https://www.choosechicago.com/wp-json/tribe/events/v1/events"
 
 HEADERS = {
     "User-Agent": (
@@ -24,108 +24,121 @@ FESTIVAL_KEYWORDS = [
     "street fest", "market", "celebration",
 ]
 
+# Skip these categories (per user-profile: no theatre)
+SKIP_KEYWORDS = ["theatre", "theater", "opera", "ballet"]
 
-def _infer_type(title):
-    tl = title.lower()
-    if any(kw in tl for kw in FESTIVAL_KEYWORDS):
+
+def _infer_type(title, categories=None):
+    combined = title.lower()
+    if categories:
+        combined += " " + " ".join(c.lower() for c in categories)
+    if any(kw in combined for kw in FESTIVAL_KEYWORDS):
         return "festival"
+    if "music" in combined or "concert" in combined:
+        return "music"
+    if "food" in combined or "taste" in combined or "dining" in combined:
+        return "food"
+    if "comedy" in combined or "standup" in combined:
+        return "comedy"
     return "other"
 
 
-def _parse_date_str(date_str):
-    """Try common date formats from Choose Chicago."""
-    date_str = date_str.strip()
-    for fmt in ("%B %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(date_str, fmt).date()
-        except ValueError:
-            continue
-    # Try ISO substring
+def _should_skip(title, categories=None):
+    combined = title.lower()
+    if categories:
+        combined += " " + " ".join(c.lower() for c in categories)
+    return any(kw in combined for kw in SKIP_KEYWORDS)
+
+
+def _parse_date(date_str):
+    """Parse ISO datetime string from Tribe API → (date, 'HH:MM')."""
+    if not date_str:
+        return None, "12:00"
     try:
-        return date.fromisoformat(date_str[:10])
-    except (ValueError, IndexError):
+        # Tribe returns "2026-03-25 10:00:00" or ISO format
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.date(), dt.strftime("%H:%M")
+    except (ValueError, AttributeError):
         pass
-    return None
+    try:
+        date_part = date_str.split("T")[0].split(" ")[0]
+        return date.fromisoformat(date_part), "12:00"
+    except (ValueError, AttributeError):
+        return None, "12:00"
 
 
 def fetch_choosechicago_events(week_start: date, week_end: date) -> list:
-    """Scrape choosechicago.com/events/ for festival/street event listings."""
-    req = urllib.request.Request(EVENTS_URL, headers=HEADERS)
+    """Fetch events from the Choose Chicago Tribe Events REST API."""
+    params = urllib.parse.urlencode({
+        "start_date": week_start.isoformat(),
+        "end_date": week_end.isoformat(),
+        "per_page": "50",
+    })
+    url = f"{API_URL}?{params}"
+
+    req = urllib.request.Request(url, headers=HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
+            data = json.loads(resp.read())
     except Exception:
         return []
 
-    # If page is mostly JS-rendered, we won't find event markup
-    if len(raw) < 500 or "<noscript" in raw.lower() and "enable javascript" in raw.lower():
+    raw_events = data.get("events", [])
+    if not isinstance(raw_events, list):
         return []
 
     events = []
+    for ev in raw_events:
+        try:
+            title = ev.get("title", "")
+            if not title:
+                continue
 
-    # Try to find event cards — Choose Chicago uses various markup patterns
-    # Pattern 1: structured event cards with title + date
-    cards = re.findall(
-        r'<(?:article|div)[^>]*class="[^"]*event[^"]*"[^>]*>(.*?)</(?:article|div)>',
-        raw, re.DOTALL | re.IGNORECASE
-    )
+            # Get category names
+            categories = []
+            for cat in ev.get("categories", []):
+                cat_name = cat.get("name", "") if isinstance(cat, dict) else str(cat)
+                if cat_name:
+                    categories.append(cat_name)
 
-    for card in cards:
-        # Extract title
-        title_m = re.search(
-            r'<(?:h[2-4]|a)[^>]*>([^<]{5,120})</(?:h[2-4]|a)>', card
-        )
-        if not title_m:
+            if _should_skip(title, categories):
+                continue
+
+            # Parse date
+            start_str = ev.get("start_date", "") or ev.get("utc_start_date", "")
+            event_date, event_time = _parse_date(start_str)
+            if event_date is None:
+                continue
+            if not (week_start <= event_date <= week_end):
+                continue
+
+            # Venue
+            venue_obj = ev.get("venue", {}) or {}
+            if isinstance(venue_obj, dict):
+                venue = venue_obj.get("venue", "") or venue_obj.get("name", "") or "Chicago"
+            else:
+                venue = str(venue_obj) or "Chicago"
+
+            # URL
+            event_url = ev.get("url", "") or "https://www.choosechicago.com/events/"
+
+            event_type = _infer_type(title, categories)
+
+            events.append({
+                "name":           title,
+                "type":           event_type,
+                "date":           event_date.isoformat(),
+                "time":           event_time,
+                "venue":          venue,
+                "neighborhood":   "Chicago",
+                "indoor_outdoor": "outdoor",
+                "price_range":    "$",
+                "url":            event_url,
+                "description":    "",
+            })
+
+        except (KeyError, TypeError, ValueError):
             continue
-        name = html.unescape(title_m.group(1).strip())
-        if not name:
-            continue
-
-        # Extract date
-        date_m = re.search(
-            r'(?:datetime|date|time)[^>]*>([^<]+)<',
-            card, re.IGNORECASE
-        )
-        if not date_m:
-            # Try date in any text containing month names
-            date_m = re.search(
-                r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s*\d{4})',
-                card, re.IGNORECASE
-            )
-        if not date_m:
-            continue
-
-        event_date = _parse_date_str(date_m.group(1))
-        if event_date is None:
-            continue
-        if not (week_start <= event_date <= week_end):
-            continue
-
-        # Extract URL
-        url_m = re.search(r'href="([^"]+)"', card)
-        event_url = url_m.group(1) if url_m else EVENTS_URL
-        if event_url.startswith("/"):
-            event_url = "https://www.choosechicago.com" + event_url
-
-        # Extract venue/location if available
-        venue_m = re.search(
-            r'(?:location|venue|place)[^>]*>([^<]+)<',
-            card, re.IGNORECASE
-        )
-        venue = html.unescape(venue_m.group(1).strip()) if venue_m else "Chicago"
-
-        events.append({
-            "name":           name,
-            "type":           _infer_type(name),
-            "date":           event_date.isoformat(),
-            "time":           "12:00",
-            "venue":          venue,
-            "neighborhood":   "Chicago",
-            "indoor_outdoor": "outdoor",
-            "price_range":    "$",
-            "url":            event_url,
-            "description":    "",
-        })
 
     events.sort(key=lambda e: (e["date"], e["time"]))
     return events
