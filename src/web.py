@@ -32,6 +32,16 @@ try:
 except ImportError:
     fetch_parks_events = lambda a, b: []
 
+try:
+    from choosechicago import fetch_choosechicago_events
+except ImportError:
+    fetch_choosechicago_events = lambda a, b: []
+
+try:
+    from dcase import fetch_dcase_events
+except ImportError:
+    fetch_dcase_events = lambda a, b: []
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -493,16 +503,18 @@ def build_page():
         except Exception:
             return []
 
-    sports = _safe(get_sports_events, today, end_date)
-    culture = _safe(fetch_do312_events, today, end_date)
-    tm     = _safe(fetch_ticketmaster_events, today, end_date)
-    eb     = _safe(fetch_eventbrite_events, today, end_date)
-    parks  = _safe(fetch_parks_events, today, end_date)
+    sports       = _safe(get_sports_events, today, end_date)
+    culture      = _safe(fetch_do312_events, today, end_date)
+    tm           = _safe(fetch_ticketmaster_events, today, end_date)
+    eb           = _safe(fetch_eventbrite_events, today, end_date)
+    parks        = _safe(fetch_parks_events, today, end_date)
+    choosechicago = _safe(fetch_choosechicago_events, today, end_date)
+    dcase        = _safe(fetch_dcase_events, today, end_date)
 
     # Merge + dedup by name+date; drop anything before today
     today_str = today.isoformat()
     seen, unique = set(), []
-    for e in sports + culture + tm + eb + parks:
+    for e in sports + culture + tm + eb + parks + choosechicago + dcase:
         if e.get("date", "") < today_str:
             continue
         key = f"{e['name'].lower()}|{e['date']}"

@@ -10,6 +10,31 @@ from sports import get_sports_events
 from do312 import fetch_do312_events
 from display import render
 
+try:
+    from ticketmaster import fetch_ticketmaster_events
+except ImportError:
+    fetch_ticketmaster_events = lambda a, b: []
+
+try:
+    from eventbrite import fetch_eventbrite_events
+except ImportError:
+    fetch_eventbrite_events = lambda a, b: []
+
+try:
+    from chicago_parks import fetch_parks_events
+except ImportError:
+    fetch_parks_events = lambda a, b: []
+
+try:
+    from choosechicago import fetch_choosechicago_events
+except ImportError:
+    fetch_choosechicago_events = lambda a, b: []
+
+try:
+    from dcase import fetch_dcase_events
+except ImportError:
+    fetch_dcase_events = lambda a, b: []
+
 
 def main():
     today = date.today()
@@ -40,15 +65,60 @@ def main():
         print(f"\n  ⚠ do312 fetch failed: {e}")
         culture = []
 
-    all_events = sorted(
-        sports + culture,
-        key=lambda e: (e["date"], e["time"]),
-    )
+    print("Fetching Ticketmaster events...", end="", flush=True)
+    try:
+        tm = fetch_ticketmaster_events(monday, sunday)
+        print(f" {len(tm)} event(s) found.")
+    except Exception as e:
+        print(f"\n  ⚠ Ticketmaster fetch failed: {e}")
+        tm = []
+
+    print("Fetching Eventbrite events...", end="", flush=True)
+    try:
+        eb = fetch_eventbrite_events(monday, sunday)
+        print(f" {len(eb)} event(s) found.")
+    except Exception as e:
+        print(f"\n  ⚠ Eventbrite fetch failed: {e}")
+        eb = []
+
+    print("Fetching Chicago Parks events...", end="", flush=True)
+    try:
+        parks = fetch_parks_events(monday, sunday)
+        print(f" {len(parks)} event(s) found.")
+    except Exception as e:
+        print(f"\n  ⚠ Chicago Parks fetch failed: {e}")
+        parks = []
+
+    print("Fetching Choose Chicago events...", end="", flush=True)
+    try:
+        choosechicago = fetch_choosechicago_events(monday, sunday)
+        print(f" {len(choosechicago)} event(s) found.")
+    except Exception as e:
+        print(f"\n  ⚠ Choose Chicago fetch failed: {e}")
+        choosechicago = []
+
+    print("Fetching DCASE events...", end="", flush=True)
+    try:
+        dcase = fetch_dcase_events(monday, sunday)
+        print(f" {len(dcase)} event(s) found.")
+    except Exception as e:
+        print(f"\n  ⚠ DCASE fetch failed: {e}")
+        dcase = []
+
+    # Merge + dedup by name+date
+    seen, unique = set(), []
+    for e in sports + culture + tm + eb + parks + choosechicago + dcase:
+        key = f"{e['name'].lower()}|{e['date']}"
+        if key not in seen:
+            seen.add(key)
+            unique.append(e)
+
+    all_events = sorted(unique, key=lambda e: (e["date"], e["time"]))
 
     try:
         from recommender import score_events
-        all_events = score_events(all_events)
-        all_events = [e for e in all_events if e.get("score", 0.5) >= 0.3]
+        all_events, threshold = score_events(all_events)
+        all_events = [e for e in all_events if e.get("score", 0.5) >= threshold]
         all_events = sorted(all_events, key=lambda e: (e["date"], -e.get("score", 0.5), e["time"]))
     except Exception:
         pass  # degrade gracefully — original sort preserved

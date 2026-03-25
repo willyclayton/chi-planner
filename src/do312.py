@@ -20,7 +20,7 @@ CATEGORY_MAP = {
     "comedy":                   "comedy",
     "food-drink":               "food",
     "arts-culture":             "other",
-    "festivals-fairs":          "other",
+    "festivals-fairs":          "festival",
     "lgbtq":                    "other",
     "parties-djs":              None,   # EDM/DJ per user-profile
     "theatre-performing-arts":  None,   # not Will's scene

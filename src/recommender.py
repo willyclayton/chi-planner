@@ -62,6 +62,8 @@ NEAR_HOME_NEIGHBORHOODS = {
     "lincoln square", "bucktown",
 }
 
+POPUP_KEYWORDS = {"pop-up", "popup", "pop up"}
+
 
 # ── Feature extraction ────────────────────────────────────────────────────────
 
@@ -173,6 +175,10 @@ def rule_score(event):
     if price == "$$$":                                          score -= 0.10
     if price == "$$$$":                                         score -= 0.25
     if is_weekend:                                              score += 0.05
+
+    etype = event.get("type", "")
+    if etype == "festival":                                     score += 0.20
+    if any(kw in name for kw in POPUP_KEYWORDS):                score += 0.15
 
     return round(max(0.0, min(1.0, score)), 4)
 
