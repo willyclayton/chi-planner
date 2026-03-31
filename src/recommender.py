@@ -1,24 +1,29 @@
 """
-Adaptive recommendation engine.
+Tag-affinity recommendation engine.
 
-Loose mode  (< 20 liked): rule_score, threshold = 0.35
-Tight mode  (>= 20 liked): cosine similarity to liked-event centroid,
-                            threshold = max(0.3, mean - 1.5*std)
+Scores events by weighted average of tag affinities learned from ratings.
+Falls back to rule_score() with < 10 ratings (cold start).
 
-Reads liked events from Supabase when SUPABASE_URL / SUPABASE_ANON_KEY are set,
-falls back to local SQLite otherwise (local dev).
+Reads from Supabase when configured, falls back to local SQLite.
 """
-import json
 import os
-import urllib.request
-import urllib.error
 from datetime import datetime
 
-DATA_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
-DB_FILE     = os.path.join(DATA_DIR, "ratings.db")
-MIN_RATINGS = 20
+MIN_RATINGS = 10
+NOVELTY_BONUS = 0.35  # score for events with no matching tags
 
-# ── Keyword / venue sets ──────────────────────────────────────────────────────
+TAG_WEIGHTS = {
+    "artist":       5.0,
+    "team":         4.0,
+    "venue":        3.0,
+    "type":         2.0,
+    "neighborhood": 1.5,
+    "keyword":      1.0,
+    "price":        0.5,
+    "day_of_week":  0.3,
+}
+
+# ── Keyword / venue sets (kept for rule_score fallback) ───────────────────────
 
 ROCK_COUNTRY_KEYWORDS = {
     "rock", "country", "folk", "americana",
@@ -65,86 +70,7 @@ NEAR_HOME_NEIGHBORHOODS = {
 POPUP_KEYWORDS = {"pop-up", "popup", "pop up"}
 
 
-# ── Feature extraction ────────────────────────────────────────────────────────
-
-def _features(event):
-    """Return a 28-element feature vector for one event."""
-    name         = event.get("name", "").lower()
-    name_pad     = f" {name} "
-    etype        = event.get("type", "")
-    venue        = event.get("venue", "").lower()
-    neighborhood = event.get("neighborhood", "").lower()
-    price        = event.get("price_range", "$$")
-    io           = event.get("indoor_outdoor", "indoor")
-
-    try:
-        dt          = datetime.fromisoformat(event["date"] + "T" + event.get("time", "20:00"))
-        day_of_week = dt.weekday()
-        hour        = dt.hour
-    except Exception:
-        day_of_week = 5
-        hour        = 20
-
-    is_music    = int(etype == "music")
-    is_comedy   = int(etype == "comedy")
-    is_sports   = int(etype == "sports")
-    is_food     = int(etype == "food")
-    is_festival = int(etype == "festival")
-    is_other    = int(etype == "other")
-
-    is_cubs       = int("cubs"       in name)
-    is_blackhawks = int("blackhawks" in name)
-    is_bulls      = int("bulls"      in name)
-    is_bears      = int("bears"      in name)
-
-    is_rock_country       = int(any(kw in name for kw in ROCK_COUNTRY_KEYWORDS))
-    is_edm                = int(
-        any(kw in name for kw in EDM_KEYWORDS)
-        or _DJ_PATTERN in name_pad
-        or any(v in venue for v in EDM_VENUES)
-    )
-    is_comedy_known_venue = int(any(v in venue for v in COMEDY_VENUES))
-    is_arena_show         = int(any(v in venue for v in ARENA_VENUES))
-    is_intimate_venue     = int(any(v in venue for v in INTIMATE_VENUES))
-    is_comedy_open_mic    = int(etype == "comedy" and "open mic" in name)
-
-    is_near_home = int(any(n in neighborhood for n in NEAR_HOME_NEIGHBORHOODS))
-    is_suburb    = int(event.get("city", "").lower() not in ("", "chicago"))
-    is_outdoor   = int(io == "outdoor")
-    is_mixed     = int(io == "mixed")
-
-    price_free = int(price == "free")
-    price_low  = int(price == "$")
-    price_mid  = int(price == "$$")
-    price_high = int(price == "$$$")
-
-    is_weekend   = int(day_of_week >= 4)
-    is_weeknight = int(day_of_week < 4)
-    hour_norm    = hour / 23.0
-    is_prime     = int(19 <= hour <= 22)
-
-    return [
-        is_music, is_comedy, is_sports, is_food, is_festival, is_other,
-        is_cubs, is_blackhawks, is_bulls, is_bears,
-        is_rock_country, is_edm, is_comedy_known_venue,
-        is_arena_show, is_intimate_venue, is_comedy_open_mic,
-        is_near_home, is_suburb, is_outdoor, is_mixed,
-        price_free, price_low, price_mid, price_high,
-        is_weekend, is_weeknight, hour_norm, is_prime,
-    ]
-
-
-def _partial_event(name, etype):
-    """Minimal event dict reconstructed from Supabase-stored fields."""
-    return {
-        "name": name, "type": etype,
-        "date": "2026-01-01", "time": "20:00",
-        "venue": "", "neighborhood": "",
-        "indoor_outdoor": "indoor", "price_range": "$$",
-    }
-
-
-# ── Rule-based fallback ───────────────────────────────────────────────────────
+# ── Rule-based fallback (cold start) ─────────────────────────────────────────
 
 def rule_score(event):
     """Heuristic score in [0, 1] based on user-profile.md weights."""
@@ -183,56 +109,68 @@ def rule_score(event):
     return round(max(0.0, min(1.0, score)), 4)
 
 
-# ── Data loaders ──────────────────────────────────────────────────────────────
+# ── Tag affinity scoring ─────────────────────────────────────────────────────
 
-def _load_liked_from_supabase():
+def _score_event_by_tags(event, affinities, tags):
     """
-    Returns list of {event_id, event_name, event_type, event_date} dicts,
-    or None if Supabase is not configured / unavailable.
+    Score one event using weighted tag affinities.
+    Returns float in [0, 1].
     """
-    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
-    key = os.environ.get("SUPABASE_ANON_KEY", "")
-    if not url or not key:
-        return None
+    weighted_sum = 0.0
+    weight_total = 0.0
 
-    endpoint = url + "/rest/v1/ratings?select=event_id,event_name,event_type,event_date"
-    req = urllib.request.Request(endpoint, headers={
-        "apikey": key,
-        "Authorization": f"Bearer {key}",
-    })
+    for tag_type, tag_value in tags:
+        key = (tag_type, tag_value)
+        weight = TAG_WEIGHTS.get(tag_type, 1.0)
+
+        if key in affinities:
+            weighted_sum += affinities[key] * weight
+            weight_total += weight
+
+    if weight_total == 0:
+        return NOVELTY_BONUS
+
+    # Raw score is in [-1, 1], normalize to [0, 1]
+    raw = weighted_sum / weight_total
+    return round(max(0.0, min(1.0, (raw + 1) / 2)), 4)
+
+
+def _load_affinities():
+    """Load tag affinities + rating count from best available source."""
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return None
+        from db import supabase_get_ratings_with_tags, get_tag_affinities, get_ratings_count
 
+        # Try Supabase first
+        sb_data = supabase_get_ratings_with_tags()
+        if sb_data is not None and len(sb_data) >= MIN_RATINGS:
+            # Compute affinities from Supabase data
+            tag_stats = {}
+            for _, rating, tag_list in sb_data:
+                for tag_type, tag_value in tag_list:
+                    key = (tag_type, tag_value)
+                    if key not in tag_stats:
+                        tag_stats[key] = [0, 0, 0]
+                    tag_stats[key][2] += 1
+                    if rating == 1:
+                        tag_stats[key][0] += 1
+                    elif rating == -1:
+                        tag_stats[key][1] += 1
 
-def _load_liked_from_sqlite():
-    """SQLite fallback for local dev."""
-    import sqlite3
-    if not os.path.exists(DB_FILE):
-        return []
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        rows = conn.execute(
-            "SELECT event_json, rating FROM ratings WHERE rating = 1"
-        ).fetchall()
-        conn.close()
-        result = []
-        for row in rows:
-            try:
-                ev = json.loads(row[0])
-                result.append({
-                    "event_id":   ev.get("id", ev.get("name", "")),
-                    "event_name": ev.get("name", ""),
-                    "event_type": ev.get("type", ""),
-                    "event_date": ev.get("date", ""),
-                })
-            except Exception:
-                pass
-        return result
+            affinities = {}
+            for key, (liked, disliked, total) in tag_stats.items():
+                affinities[key] = (liked - disliked) / total
+
+            return affinities, len(sb_data)
+
+        # Fall back to SQLite
+        count = get_ratings_count()
+        if count >= MIN_RATINGS:
+            return get_tag_affinities(), count
+
+        return {}, count
+
     except Exception:
-        return []
+        return {}, 0
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -245,58 +183,30 @@ def score_events(events):
     Never raises — falls back gracefully on any error.
     """
     try:
-        liked = _load_liked_from_supabase()
-        if liked is None:
-            liked = _load_liked_from_sqlite()
+        affinities, rating_count = _load_affinities()
 
-        liked_count = len(liked)
-
-        # ── Loose mode ────────────────────────────────────────────────────────
-        if liked_count < MIN_RATINGS:
+        # Cold start — use rules
+        if rating_count < MIN_RATINGS:
             for event in events:
                 event["score"] = rule_score(event)
             return events, 0.35
 
-        # ── Tight mode ────────────────────────────────────────────────────────
-        try:
-            import numpy as np
+        # Tag affinity scoring
+        from db import extract_tags
 
-            liked_feats = np.array([
-                _features(_partial_event(r.get("event_name", ""), r.get("event_type", "")))
-                for r in liked
-            ], dtype=float)
+        for event in events:
+            tags = extract_tags(event)
+            event["score"] = _score_event_by_tags(event, affinities, tags)
 
-            centroid      = liked_feats.mean(axis=0)
-            centroid_norm = float(np.linalg.norm(centroid))
+        # Dynamic threshold: median of all scores, floored at 0.35
+        scores = sorted(e.get("score", 0) for e in events)
+        if scores:
+            median = scores[len(scores) // 2]
+            threshold = max(0.35, round(median, 4))
+        else:
+            threshold = 0.35
 
-            def _cos(feat_vec):
-                fn = float(np.linalg.norm(feat_vec))
-                if centroid_norm == 0 or fn == 0:
-                    return 0.0
-                return float(np.dot(centroid, feat_vec) / (centroid_norm * fn))
-
-            for event in events:
-                feat = np.array(_features(event), dtype=float)
-                event["score"] = round((_cos(feat) + 1) / 2, 4)
-
-            liked_scores = [
-                (_cos(np.array(
-                    _features(_partial_event(r.get("event_name", ""), r.get("event_type", ""))),
-                    dtype=float,
-                )) + 1) / 2
-                for r in liked
-            ]
-
-            mean_s    = float(np.mean(liked_scores))
-            std_s     = float(np.std(liked_scores))
-            threshold = max(0.30, round(mean_s - 1.5 * std_s, 4))
-
-            return events, threshold
-
-        except Exception:
-            for event in events:
-                event["score"] = rule_score(event)
-            return events, 0.35
+        return events, threshold
 
     except Exception:
         for event in events:

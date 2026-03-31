@@ -255,6 +255,24 @@ body {
 .heart-btn.liked { color: #e53e3e; }
 .heart-btn:hover { transform: scale(1.2); }
 
+/* ── 3-way rating buttons (Train tab) ── */
+.rate-btns {
+  display: flex; gap: 4px; flex-shrink: 0;
+}
+.rate-btn {
+  background: none; border: 1.5px solid var(--rule); border-radius: 4px;
+  cursor: pointer; font-size: 16px; padding: 4px 8px; line-height: 1;
+  transition: background .15s, border-color .15s, transform .1s;
+  opacity: 0.5;
+}
+.rate-btn:hover { transform: scale(1.15); opacity: 1; }
+.rate-btn.active { opacity: 1; }
+.rate-btn.active[data-rating="1"] { background: #dcfce7; border-color: #22c55e; }
+.rate-btn.active[data-rating="0"] { background: #fef9c3; border-color: #eab308; }
+.rate-btn.active[data-rating="-1"] { background: #fecaca; border-color: #ef4444; }
+.event-row.rated { opacity: 0.45; }
+.event-row.rated:hover { opacity: 0.7; }
+
 /* ── Train counter ── */
 .train-counter {
   display: inline-flex; align-items: center; gap: 8px;
@@ -301,6 +319,11 @@ let currentTab  = 'myweek';
 let currentMode = 'picks';
 let currentCat  = 'all';
 let likedIds    = new Set(JSON.parse(localStorage.getItem('chiLiked') || '[]'));
+// ratings: { event_id: 1|0|-1 }
+let ratings     = JSON.parse(localStorage.getItem('chiRatings') || '{}');
+// Migrate old likes into ratings
+likedIds.forEach(id => { if (!(id in ratings)) ratings[id] = 1; });
+localStorage.setItem('chiRatings', JSON.stringify(ratings));
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function esc(s) {
@@ -334,7 +357,7 @@ function fmtShortDate(iso) {
 function render() {
   const isTrain = currentTab === 'train';
   document.getElementById('train-counter').classList.toggle('hidden', !isTrain);
-  document.getElementById('like-count').textContent = likedIds.size;
+  document.getElementById('like-count').textContent = Object.keys(ratings).length;
 
   if (isTrain) {
     renderTrain(ALL_EVENTS);
@@ -398,14 +421,24 @@ function renderMyWeek(evts) {
 }
 
 function renderTrain(evts) {
-  const sorted = [...evts].sort((a, b) =>
-    (a.date + a.time).localeCompare(b.date + b.time));
-  document.getElementById('empty-state').classList.toggle('hidden', sorted.length > 0);
-  document.getElementById('event-list').innerHTML = sorted.map(e => buildRow(e, true)).join('');
+  // Unrated first, then rated (dimmed); both sorted chronologically
+  const unrated = evts.filter(e => !(e.id in ratings))
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const rated = evts.filter(e => e.id in ratings)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+  const ratedCount = Object.keys(ratings).length;
+  document.getElementById('like-count').textContent = ratedCount;
+  document.getElementById('empty-state').classList.toggle('hidden', evts.length > 0);
+  document.getElementById('event-list').innerHTML =
+    unrated.map(e => buildRow(e, true)).join('') +
+    (rated.length ? '<hr style="margin:24px 0;border-color:var(--rule)">' : '') +
+    rated.map(e => buildRow(e, true)).join('');
 }
 
-function buildRow(e, showHeart) {
-  const isLiked = likedIds.has(e.id);
+function buildRow(e, showRating) {
+  const curRating = ratings[e.id];
+  const isRated = curRating !== undefined;
 
   const priceHtml = (e.price_range === 'free')
     ? `<span class="price-free">FREE</span>`
@@ -420,11 +453,19 @@ function buildRow(e, showHeart) {
   const when = [fmtShortDate(e.date), fmtTime(e.time)].filter(Boolean).join(' @ ');
   const meta = [e.venue, e.neighborhood, when].filter(Boolean).join(' \u00B7 ');
 
-  const heartBtn = showHeart
-    ? `<button class="heart-btn${isLiked ? ' liked' : ''}" data-id="${esc(e.id)}" onclick="toggleLike(event,this)">${isLiked ? '\u2665' : '\u2661'}</button>`
-    : '';
+  let ratingHtml = '';
+  if (showRating) {
+    const a = (v) => curRating === v ? 'active' : '';
+    ratingHtml = `<div class="rate-btns">
+      <button class="rate-btn ${a(1)}" data-id="${esc(e.id)}" data-rating="1" onclick="rateEvent(event,this)" title="Like">\uD83D\uDC4D</button>
+      <button class="rate-btn ${a(0)}" data-id="${esc(e.id)}" data-rating="0" onclick="rateEvent(event,this)" title="Meh">\uD83E\uDD37</button>
+      <button class="rate-btn ${a(-1)}" data-id="${esc(e.id)}" data-rating="-1" onclick="rateEvent(event,this)" title="Nope">\uD83D\uDC4E</button>
+    </div>`;
+  }
 
-  return `<div class="event-row" data-id="${esc(e.id)}">
+  const rowClass = (showRating && isRated) ? 'event-row rated' : 'event-row';
+
+  return `<div class="${rowClass}" data-id="${esc(e.id)}">
   <span class="type-chip ${esc(e.type)}">${esc(e.type)}</span>
   <div class="event-main">
     <a class="event-link" href="${esc(e.url || '#')}" target="_blank" rel="noopener">${esc(e.name)}${starBadge}</a>
@@ -432,50 +473,63 @@ function buildRow(e, showHeart) {
     ${outdoorFlag}
   </div>
   ${priceHtml}
-  ${heartBtn}
+  ${ratingHtml}
 </div>`;
 }
 
-// ── Heart toggle ───────────────────────────────────────────────────────────
-async function toggleLike(evt, btn) {
+// ── Rate event (3-way) ────────────────────────────────────────────────────
+async function rateEvent(evt, btn) {
   evt.preventDefault();
   evt.stopPropagation();
 
-  const id    = btn.dataset.id;
-  const event = ALL_EVENTS.find(e => e.id === id);
+  const id        = btn.dataset.id;
+  const newRating = parseInt(btn.dataset.rating, 10);
+  const event     = ALL_EVENTS.find(e => e.id === id);
   if (!event) return;
 
-  const wasLiked = likedIds.has(id);
-  const action   = wasLiked ? 'unlike' : 'like';
+  const oldRating = ratings[id];
+  const isSame    = oldRating === newRating;
 
-  // Optimistic update
-  wasLiked ? likedIds.delete(id) : likedIds.add(id);
-  btn.classList.toggle('liked', !wasLiked);
-  btn.textContent = !wasLiked ? '\u2665' : '\u2661';
-  document.getElementById('like-count').textContent = likedIds.size;
+  // Toggle off if clicking same rating again
+  if (isSame) {
+    delete ratings[id];
+  } else {
+    ratings[id] = newRating;
+  }
+
+  // Also keep likedIds in sync for backward compat
+  if (ratings[id] === 1) likedIds.add(id);
+  else likedIds.delete(id);
+
+  localStorage.setItem('chiRatings', JSON.stringify(ratings));
   localStorage.setItem('chiLiked', JSON.stringify([...likedIds]));
+  render();
 
   try {
     const resp = await fetch('/api/rate', {
       method:  'POST',
       headers: {'Content-Type': 'application/json'},
       body:    JSON.stringify({
-        event_id:   id,
+        event_id: id,
+        event:    event,
+        rating:   isSame ? null : newRating,
+        // Backward compat
         event_name: event.name,
         event_date: event.date,
         event_type: event.type,
-        action,
+        action:     isSame ? 'unlike' : 'like',
       }),
     });
     if (!resp.ok) throw new Error('failed');
   } catch(e) {
     // Rollback
-    wasLiked ? likedIds.add(id) : likedIds.delete(id);
-    btn.classList.toggle('liked', wasLiked);
-    btn.textContent = wasLiked ? '\u2665' : '\u2661';
-    document.getElementById('like-count').textContent = likedIds.size;
+    if (oldRating !== undefined) ratings[id] = oldRating;
+    else delete ratings[id];
+    if (ratings[id] === 1) likedIds.add(id); else likedIds.delete(id);
+    localStorage.setItem('chiRatings', JSON.stringify(ratings));
     localStorage.setItem('chiLiked', JSON.stringify([...likedIds]));
-    console.error('Like failed:', e);
+    render();
+    console.error('Rating failed:', e);
   }
 }
 
@@ -548,13 +602,26 @@ def build_page():
     for e in all_events:
         e["id"] = _eid(e)
 
+    # ── Persist events + tags to DB ───────────────────────────────────────────
+    try:
+        from db import upsert_events
+        upsert_events(all_events)
+    except Exception:
+        pass
+
     # ── Score + threshold ─────────────────────────────────────────────────────
     threshold = 0.35
     try:
         from recommender import score_events
         all_events, threshold = score_events(all_events)
     except Exception:
-        from events import event_emoji   # noqa: avoids unused import warning
+        pass
+
+    # ── Store scores back to DB ───────────────────────────────────────────────
+    try:
+        from db import upsert_events as _update_scores
+        _update_scores(all_events)
+    except Exception:
         pass
 
     # ── Time buckets (today + next 7 days) ────────────────────────────────────
@@ -666,7 +733,7 @@ def build_page():
 <main class="content">
   <div class="train-counter hidden" id="train-counter">
     <span class="count-num" id="like-count">0</span>
-    <span>events liked so far</span>
+    <span>events rated so far</span>
   </div>
   <div id="event-list"></div>
   <div class="empty-state hidden" id="empty-state">No events match your current filters.</div>
